@@ -31,7 +31,7 @@ let
       "cmd/wahrwelt"
       "cmd/wahrwelt-fs-helper"
     ];
-    vendorHash = "sha256-owIDnnxJBzzo9Jdn+Avn0bRBXMQPnfYzxh8/5viBw+Y=";
+    vendorHash = "sha256-t56VdyNPlGtPmLBvFuPrONvoPEOvvJn9foNmUBQlIeI=";
     nativeBuildInputs = [ flakePkgs.makeWrapper ];
     ldflags = [
       "-s"
