@@ -43,6 +43,22 @@ let
       cp -R --no-preserve=mode,ownership,timestamps "${integrationRoot}/qml/." .
       substituteInPlace services/Wallpapers.qml \
         --replace-fail \
+          '    property var propertiesCache: ({})' \
+          $'    property var propertiesCache: ({})\n\n    readonly property list<string> videoExtensions: [".mp4", ".mkv", ".webm", ".avi", ".mov"]\n\n    function isVideoPath(path: string): bool {\n        const lowerPath = String(path).toLowerCase();\n        return videoExtensions.some(extension => lowerPath.endsWith(extension));\n    }' \
+        --replace-fail \
+          '                arr.push(liveWallpapers.entries[i].path);' \
+          $'                const path = liveWallpapers.entries[i].path;\n                if (isVideoPath(path))\n                    arr.push(path);' \
+        --replace-fail \
+          $'        if (filterMode === 1 || filterMode === 2) {\n            if (liveWallpapers.entries) {\n                for (let i = 0; i < liveWallpapers.entries.length; i++) {\n                    let entry = liveWallpapers.entries[i];\n                    if (matchesColor(entry.path, colorFilter)) {' \
+          $'        if (filterMode === 1 || filterMode === 2) {\n            if (liveWallpapers.entries) {\n                for (let i = 0; i < liveWallpapers.entries.length; i++) {\n                    let entry = liveWallpapers.entries[i];\n                    if (isVideoPath(entry.path) && matchesColor(entry.path, colorFilter)) {' \
+        --replace-fail \
+          "        path: Quickshell.env(\"CAELESTIA_LIVE_WALLPAPERS_DIR\") || (Paths.wallsdir.substring(0, Paths.wallsdir.lastIndexOf('/')) + \"/Live-Wallpapers\")" \
+          '        path: Paths.wallsdir'
+      test "$(grep -Fxc '    readonly property list<string> videoExtensions: [".mp4", ".mkv", ".webm", ".avi", ".mov"]' services/Wallpapers.qml)" -eq 1
+      test "$(grep -Fc 'if (isVideoPath(entry.path)' services/Wallpapers.qml)" -eq 1
+      test "$(grep -Fc 'if (matchesColor(entry.path' services/Wallpapers.qml)" -eq 1
+      substituteInPlace services/Wallpapers.qml \
+        --replace-fail \
           'command: ["bash", "-c", `"''${Paths.home}/.local/bin/update-caelestia-live-thumbs" "''${Paths.wallsdir}" "''${liveWallpapers.path}"`]' \
           'command: ["${thumbnailTool}/bin/update-caelestia-live-thumbs", Paths.wallsdir, liveWallpapers.path]'
     '';

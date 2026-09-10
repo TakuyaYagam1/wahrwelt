@@ -37,11 +37,13 @@ func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
 		"wahrwelt.features.caelestiaLiveWallpapers",
 		"wahrweltPkgs.caelestia-live-shell",
 		"wahrweltPkgs.caelestia-live-cli",
-		"CAELESTIA_LIVE_WALLPAPERS_DIR",
 	} {
 		if !strings.Contains(homeModule, want) {
 			t.Fatalf("Caelestia Home Manager integration is missing %q\n%s", want, homeModule)
 		}
+	}
+	if strings.Contains(homeModule, "Live-Wallpapers") || strings.Contains(homeModule, "CAELESTIA_LIVE_WALLPAPERS_DIR") {
+		t.Fatalf("live and static wallpapers must share ~/Pictures/Wallpapers\n%s", homeModule)
 	}
 }
 
@@ -53,6 +55,10 @@ func TestCaelestiaLiveWallpapersPackageAvoidsMutableSystemPaths(t *testing.T) {
 		"prev.qt6.qtmultimedia",
 		"update-caelestia-live-thumbs",
 		"command: [\"${thumbnailTool}/bin/update-caelestia-live-thumbs\"",
+		"readonly property list<string> videoExtensions",
+		"function isVideoPath(path: string): bool",
+		"if (filterMode === 1 || filterMode === 2)",
+		"path: Paths.wallsdir",
 	} {
 		if !strings.Contains(pkg, want) {
 			t.Fatalf("Caelestia live wallpaper package is missing %q\n%s", want, pkg)

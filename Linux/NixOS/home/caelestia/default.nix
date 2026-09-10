@@ -25,7 +25,6 @@ let
       wahrweltPkgs.caelestia-live-cli
     else
       wahrweltPkgs.caelestia-cli or pkgs.caelestia-cli;
-  liveWallpapersDirectory = "${config.home.homeDirectory}/Pictures/Live-Wallpapers";
 in
 {
   imports = [
@@ -64,17 +63,7 @@ in
     };
 
     home = {
-      sessionVariables = lib.mkIf liveWallpapersEnabled {
-        CAELESTIA_LIVE_WALLPAPERS_DIR = liveWallpapersDirectory;
-      };
-
       activation = {
-        caelestiaLiveWallpapersDirectory = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-          lib.optionalString liveWallpapersEnabled ''
-            $DRY_RUN_CMD ${pkgs.coreutils}/bin/mkdir -p "${liveWallpapersDirectory}"
-          ''
-        );
-
         caelestiaSeedShellJson = homeLibs.shellSeed.mkSeedActivation {
           dirs = [ "$HOME/.config/caelestia" ];
           body = ''
