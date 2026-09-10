@@ -193,6 +193,13 @@ check_live_wallpaper_contract() {
       "$variant" "$background" >&2
     exit 1
   fi
+  if grep -Fq 'id: previousWallpaper' "$background" &&
+    ! sed -n '/id: previousWallpaper/,/^            }/p' "$background" |
+      grep -Fq 'visible: !bgRoot.videoRevealed'; then
+    printf 'FAIL: End4 %s previous wallpaper keeps covering the live video layer: %s\n' \
+      "$variant" "$background" >&2
+    exit 1
+  fi
 
   for expected in \
     'Quickshell.screens' \

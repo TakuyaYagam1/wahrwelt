@@ -253,6 +253,18 @@ def patch_background(root: Path) -> None:
     text, count = wallpaper_block.subn(r"\1\2 && !bgRoot.wallpaperIsLive", text, count=1)
     if count != 1:
         fail(f"wallpaper image visibility anchor missing or ambiguous in {path}")
+
+    if "property bool videoRevealed:" in text:
+        previous_wallpaper = re.compile(
+            r"(?m)^(\s+id: previousWallpaper\b[\s\S]*?^\s+visible:) true$"
+        )
+        text, count = previous_wallpaper.subn(
+            r"\1 !bgRoot.videoRevealed",
+            text,
+            count=1,
+        )
+        if count != 1:
+            fail(f"previous wallpaper video reveal anchor missing or ambiguous in {path}")
     path.write_text(text)
 
 
