@@ -3,6 +3,7 @@
   homeLibs,
   pkgs,
   lib,
+  wahrwelt,
   ...
 }:
 
@@ -13,6 +14,18 @@ let
   shellDefaults = builtins.fromJSON (builtins.readFile ./default-settings.json);
   shellSettings = lib.recursiveUpdate shellDefaults config.caelestiaShellSettings;
   shellJson = pkgs.writeText "caelestia-shell.json" (builtins.toJSON shellSettings);
+  liveWallpapersEnabled = wahrwelt.features.caelestiaLiveWallpapers;
+  caelestiaPackage =
+    if liveWallpapersEnabled then
+      wahrweltPkgs.caelestia-live-shell
+    else
+      wahrweltPkgs.caelestia-shell or pkgs.caelestia-shell;
+  caelestiaCliPackage =
+    if liveWallpapersEnabled then
+      wahrweltPkgs.caelestia-live-cli
+    else
+      wahrweltPkgs.caelestia-cli or pkgs.caelestia-cli;
+  liveWallpapersDirectory = "${config.home.homeDirectory}/Pictures/Live-Wallpapers";
 in
 {
   imports = [
@@ -35,7 +48,7 @@ in
   config = {
     programs.caelestia = {
       enable = true;
-      package = wahrweltPkgs.caelestia-shell or pkgs.caelestia-shell;
+      package = caelestiaPackage;
 
       systemd = {
         enable = false;
@@ -45,12 +58,23 @@ in
 
       cli = {
         enable = true;
+        package = caelestiaCliPackage;
         settings.theme.enableGtk = false;
       };
     };
 
     home = {
+      sessionVariables = lib.mkIf liveWallpapersEnabled {
+        CAELESTIA_LIVE_WALLPAPERS_DIR = liveWallpapersDirectory;
+      };
+
       activation = {
+        caelestiaLiveWallpapersDirectory = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+          lib.optionalString liveWallpapersEnabled ''
+            $DRY_RUN_CMD ${pkgs.coreutils}/bin/mkdir -p "${liveWallpapersDirectory}"
+          ''
+        );
+
         caelestiaSeedShellJson = homeLibs.shellSeed.mkSeedActivation {
           dirs = [ "$HOME/.config/caelestia" ];
           body = ''

@@ -140,7 +140,7 @@ jobs:
         run: |
           nix build --no-link --print-build-logs --no-write-lock-file \
             "$FLAKE#nixosConfigurations.NixOS.config.home-manager.users.user.programs.caelestia.package" \
-            "$FLAKE#nixosConfigurations.NixOS.pkgs.caelestia-cli"
+            "$FLAKE#nixosConfigurations.NixOS.config.home-manager.users.user.programs.caelestia.cli.package"
 
       - name: Create pull request
         id: cpr

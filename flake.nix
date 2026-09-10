@@ -26,6 +26,10 @@
         nixpkgs.follows = "nixpkgs";
       };
     };
+    caelestia-live-wallpapers = {
+      url = "github:SunnydeuS/Caelestia-Live-Wallpapers-Integration/3e2b9770e360c9159970b4ebbe6483cddd7529df";
+      flake = false;
+    };
     quickshell = {
       url = "github:outfoxxed/quickshell";
       inputs.nixpkgs.follows = "nixpkgs";

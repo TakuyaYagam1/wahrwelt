@@ -94,6 +94,7 @@ let
           options = {
             secureBoot = boolOption false;
             ctfTools = boolOption false;
+            caelestiaLiveWallpapers = boolOption false;
             claudeDesktopCowork = boolOption false;
             omnirouter = boolOption false;
             portainer = boolOption false;

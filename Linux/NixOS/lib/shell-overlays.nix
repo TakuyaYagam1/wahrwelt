@@ -6,8 +6,16 @@ let
       prev,
       system ? prev.stdenv.hostPlatform.system,
     }:
+    let
+      caelestiaLiveWallpapers = import ../pkgs/caelestia-live-wallpapers.nix {
+        inherit inputs prev system;
+      };
+    in
     {
       caelestia-cli = inputs.caelestia-cli.packages.${system}.default;
+      caelestia-live-cli = caelestiaLiveWallpapers.cli;
+      caelestia-live-shell = caelestiaLiveWallpapers.shell;
+      caelestia-live-thumbnail-tool = caelestiaLiveWallpapers.thumbnailTool;
       caelestia-shell = inputs.caelestia-shell.packages.${system}.with-cli;
       noctalia = inputs.noctalia.packages.${system}.default;
       quickshell = inputs.quickshell.packages.${system}.default;
