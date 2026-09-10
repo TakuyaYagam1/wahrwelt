@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ config, lib, ... }:
 
 let
   inherit (lib) mkOption types;
@@ -204,4 +204,8 @@ in
     default = { };
     description = "Canonical Wahrwelt host/user configuration.";
   };
+
+  config.wahrwelt.features.caelestiaLiveWallpapers = lib.mkDefault (
+    config.wahrwelt.packages.preset != "minimal"
+  );
 }

@@ -29,7 +29,21 @@ func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
 
 	options := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/modules/mysetup-options.nix")
 	if !strings.Contains(options, "caelestiaLiveWallpapers = boolOption false;") {
-		t.Fatalf("live wallpapers must default to disabled\n%s", options)
+		t.Fatalf("live wallpapers must retain a safe option-level fallback\n%s", options)
+	}
+	for _, want := range []string{
+		"config.wahrwelt.features.caelestiaLiveWallpapers",
+		"lib.mkDefault (",
+		"config.wahrwelt.packages.preset != \"minimal\"",
+	} {
+		if !strings.Contains(options, want) {
+			t.Fatalf("desktop presets must enable live wallpapers by default via %q\n%s", want, options)
+		}
+	}
+
+	hostVars := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/hosts/NixOS/host-vars.nix")
+	if strings.Contains(hostVars, "caelestiaLiveWallpapers") {
+		t.Fatalf("host variables must rely on the preset default instead of duplicating the feature flag\n%s", hostVars)
 	}
 
 	homeModule := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/home/caelestia/default.nix")

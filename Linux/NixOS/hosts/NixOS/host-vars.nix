@@ -41,7 +41,6 @@
   features = {
     secureBoot = false;
     ctfTools = false;
-    caelestiaLiveWallpapers = true;
     omnirouter = false;
     portainer = false;
     observability = false;
