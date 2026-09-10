@@ -13,8 +13,12 @@ let
   dotfilesLib = homeLibs.dotfiles;
   trans = homeLibs.transparency;
   isV4 = wahrwelt.noctalia.version == "v4";
-  noctaliaV5Package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  noctaliaV4Package = inputs.noctalia-shell.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  patchedNoctalia = import ./patches/package.nix {
+    inherit inputs pkgs;
+    system = pkgs.stdenv.hostPlatform.system;
+  };
+  noctaliaV5Package = patchedNoctalia.v5;
+  noctaliaV4Package = patchedNoctalia.v4;
   settingsJson = ./legacy-v4/settings.json;
   colorsJson = ./legacy-v4/colors.json;
   pluginsJson = ./legacy-v4/plugins.json;

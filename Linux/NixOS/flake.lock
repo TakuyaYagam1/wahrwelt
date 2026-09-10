@@ -90,23 +90,6 @@
         "type": "github"
       }
     },
-    "caelestia-live-wallpapers": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1789026247,
-        "narHash": "sha256-YVQDQaTi9JtfDiXs5iMDnFqigiAcpxkmYzh5VZSnATM=",
-        "owner": "SunnydeuS",
-        "repo": "Caelestia-Live-Wallpapers-Integration",
-        "rev": "3e2b9770e360c9159970b4ebbe6483cddd7529df",
-        "type": "github"
-      },
-      "original": {
-        "owner": "SunnydeuS",
-        "repo": "Caelestia-Live-Wallpapers-Integration",
-        "rev": "3e2b9770e360c9159970b4ebbe6483cddd7529df",
-        "type": "github"
-      }
-    },
     "caelestia-shell": {
       "inputs": {
         "caelestia-cli": [
@@ -903,7 +886,6 @@
     "root": {
       "inputs": {
         "caelestia-cli": "caelestia-cli",
-        "caelestia-live-wallpapers": "caelestia-live-wallpapers",
         "caelestia-shell": "caelestia-shell_2",
         "claude-code": "claude-code",
         "codex": "codex",

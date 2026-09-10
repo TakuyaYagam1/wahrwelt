@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+import colorsys
+import hashlib
+import json
+import math
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from PIL import Image
+
+
+WALLPAPER_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif", ".mp4", ".webm", ".mkv", ".mov", ".avi"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov", ".avi"}
+HOME = Path.home()
+THUMBS_DIR = HOME / ".cache" / "caelestia" / "live_thumbs"
+JSON_CACHE = HOME / ".cache" / "caelestia" / "wallpaper_properties.json"
+WALLPAPERS_DIR = Path(sys.argv[1]).expanduser() if len(sys.argv) > 1 else HOME / "Pictures" / "Wallpapers"
+
+TARGET_CENTERS = {
+    "red": 0.0,
+    "orange": 28.0,
+    "yellow": 55.0,
+    "green": 125.0,
+    "blue": 210.0,
+    "purple": 280.0,
+    "pink": 330.0,
+}
+
+
+def is_animated_webp(path: Path) -> bool:
+    if path.suffix.lower() != ".webp":
+        return False
+    try:
+        with Image.open(path) as image:
+            return bool(getattr(image, "is_animated", False) or getattr(image, "n_frames", 1) > 1)
+    except (OSError, ValueError):
+        return False
+
+
+def classify_path(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in VIDEO_EXTENSIONS or suffix == ".gif" or is_animated_webp(path):
+        return "live"
+    return "static"
+
+
+def cache_path(path: Path) -> Path:
+    key = hashlib.sha256(str(path).encode("utf-8")).hexdigest()
+    return THUMBS_DIR / f"{key}.jpg"
+
+
+def should_refresh_cache(source: Path, thumb: Path) -> bool:
+    if not source.exists():
+        return False
+    if not thumb.exists():
+        return True
+    try:
+        return source.stat().st_mtime_ns > thumb.stat().st_mtime_ns
+    except OSError:
+        return True
+
+
+def get_ffprobe_info(path: Path) -> tuple[int | None, int | None, int | None]:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height,r_frame_rate",
+                "-of",
+                "json",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        stream = json.loads(result.stdout)["streams"][0]
+        numerator, denominator = map(int, stream["r_frame_rate"].split("/"))
+        return stream["width"], stream["height"], round(numerator / denominator) if denominator else None
+    except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None, None, None
+
+
+def get_image_info(path: Path) -> tuple[int | None, int | None]:
+    try:
+        with Image.open(path) as image:
+            return image.width, image.height
+    except (OSError, ValueError):
+        return None, None
+
+
+def write_thumbnail(path: Path, target: Path, kind: str) -> None:
+    if not should_refresh_cache(path, target):
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp.jpg")
+    temporary.unlink(missing_ok=True)
+    try:
+        if kind == "live" and path.suffix.lower() in VIDEO_EXTENSIONS:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(path),
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=384:-1:flags=lanczos",
+                    "-q:v",
+                    "2",
+                    str(temporary),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            with Image.open(path) as image:
+                image.seek(0)
+                image = image.convert("RGB")
+                image.thumbnail((384, 384), Image.Resampling.LANCZOS)
+                image.save(temporary, "JPEG", quality=82, optimize=True)
+        if not temporary.exists():
+            raise OSError("thumbnail command produced no output")
+        os.replace(temporary, target)
+    except (OSError, ValueError, EOFError, subprocess.SubprocessError):
+        temporary.unlink(missing_ok=True)
+        if not target.exists():
+            Image.new("RGB", (128, 128), color="black").save(target, "JPEG", quality=70, optimize=True)
+
+
+def hue_distance(first: float, second: float) -> float:
+    distance = abs(first - second) % 360.0
+    return min(distance, 360.0 - distance)
+
+
+def classify_colors_high_precision(path: Path) -> tuple[str, list[str]]:
+    try:
+        with Image.open(path) as image:
+            image = image.convert("RGB")
+            image.thumbnail((96, 96), Image.Resampling.LANCZOS)
+            pixels = list(image.get_flattened_data() if hasattr(image, "get_flattened_data") else image.getdata())
+        if not pixels:
+            return "black", ["black", "grey"]
+
+        scores = {name: 0.0 for name in TARGET_CENTERS}
+        light = dark = 0
+        for red, green, blue in pixels:
+            hue, saturation, value = colorsys.rgb_to_hsv(red / 255, green / 255, blue / 255)
+            if value > 0.78 and saturation < 0.22:
+                light += 1
+            if value < 0.25:
+                dark += 1
+            weight = saturation * value
+            for name, center in TARGET_CENTERS.items():
+                scores[name] += weight * math.exp(-0.5 * (hue_distance(hue * 360, center) / 26) ** 2)
+
+        primary = max(scores, key=scores.get)
+        maximum = scores[primary]
+        if maximum < 0.03:
+            return ("white", ["white", "grey"]) if light > len(pixels) * 0.4 else ("black", ["black", "grey"])
+        colors = [name for name, score in scores.items() if score >= maximum * 0.35 and score > 0.02]
+        if light > len(pixels) * 0.35:
+            colors.append("white")
+        if dark > len(pixels) * 0.35:
+            colors.append("black")
+        return primary, colors
+    except (OSError, ValueError):
+        return "black", ["black", "grey"]
+
+
+def process_file(path: Path, properties: dict[str, dict[str, object]]) -> None:
+    kind = classify_path(path)
+    suffix = path.suffix.upper().lstrip(".")
+    if kind == "live" and path.suffix.lower() in VIDEO_EXTENSIONS:
+        width, height, fps = get_ffprobe_info(path)
+        if width and height and fps:
+            info = f"{width}x{height}, {suffix}, {fps} FPS"
+        elif width and height:
+            info = f"{width}x{height}, {suffix}"
+        else:
+            info = suffix
+    else:
+        width, height = get_image_info(path)
+        info = f"{width}x{height}, {suffix}" if width and height else suffix
+
+    thumbnail = cache_path(path)
+    write_thumbnail(path, thumbnail, kind)
+    primary, colors = classify_colors_high_precision(thumbnail)
+    properties[str(path)] = {
+        "info": info,
+        "color": primary,
+        "colors": colors,
+        "kind": kind,
+        "live": kind == "live",
+        "thumbnail": str(thumbnail),
+    }
+
+
+def main() -> None:
+    THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+    properties: dict[str, dict[str, object]] = {}
+    if WALLPAPERS_DIR.is_dir():
+        for path in sorted(WALLPAPERS_DIR.rglob("*")):
+            if path.is_file() and path.suffix.lower() in WALLPAPER_EXTENSIONS:
+                process_file(path, properties)
+
+    JSON_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = JSON_CACHE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(properties, indent=2))
+    os.replace(temporary, JSON_CACHE)
+
+
+if __name__ == "__main__":
+    main()

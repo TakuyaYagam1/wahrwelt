@@ -146,6 +146,9 @@ projects - these dots would not exist without them:
   QuickShell fork wired in as the End4 pC `end4-pc` runtime profile.
 - [caelestia-dots/shell](https://github.com/caelestia-dots/shell) - Caelestia QuickShell, the
   default runtime profile.
+- [SunnydeuS/Caelestia-Live-Wallpapers-Integration](https://github.com/SunnydeuS/Caelestia-Live-Wallpapers-Integration) -
+  GPL-3.0 live wallpaper implementation used as the basis for the vendored and modified
+  Caelestia patches.
 - [anotherhadi/nixy](https://github.com/anotherhadi/nixy) - reference NixOS workstation config
   used for ideas around Home Manager modules, MIME defaults, and Nix utility wiring.
 

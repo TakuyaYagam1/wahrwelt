@@ -1,0 +1,314 @@
+--- a/src/caelestia/utils/wallpaper.py
++++ b/src/caelestia/utils/wallpaper.py
+@@ -10,6 +10,16 @@
+ from materialyoucolor.utils.color_utils import argb_from_rgb
+ from PIL import Image
+
++from caelestia.utils.video_cache import (
++    VALID_WALLPAPER_EXTENSIONS,
++    VIDEO_EXTENSIONS,
++    classify_path,
++    is_animated_image,
++    is_animated_webp,
++    is_video_file,
++    should_regenerate_cache,
++)
++
+ from caelestia.utils.colourfulness import get_variant
+ from caelestia.utils.hypr import message
+ from caelestia.utils.material import get_colours_for_image
+@@ -26,13 +36,22 @@
+
+
+ def is_valid_image(path: Path) -> bool:
+-    return path.is_file() and path.suffix in [".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"]
++    return path.is_file() and path.suffix.lower() in VALID_WALLPAPER_EXTENSIONS
++
++
++def is_live_wallpaper(path: Path) -> bool:
++    return is_video_file(path) or path.suffix.lower() == ".gif" or is_animated_webp(path)
+
+
+ def check_wall(wall: Path, filter_size: tuple[int, int], threshold: float) -> bool:
+-    with Image.open(wall) as img:
+-        width, height = img.size
+-        return width >= filter_size[0] * threshold and height >= filter_size[1] * threshold
++    if is_video_file(wall):
++        return True
++    try:
++        with Image.open(wall) as img:
++            width, height = img.size
++            return width >= filter_size[0] * threshold and height >= filter_size[1] * threshold
++    except (OSError, ValueError):
++        return False
+
+
+ def get_wallpaper() -> str | None:
+@@ -61,12 +80,62 @@
+ def get_thumb(wall: Path, cache: Path) -> Path:
+     thumb = cache / "thumbnail.jpg"
+
+-    if not thumb.exists():
+-        with Image.open(wall) as img:
+-            img = img.convert("RGB")
+-            img.thumbnail((128, 128), Image.Resampling.NEAREST)
+-            thumb.parent.mkdir(parents=True, exist_ok=True)
+-            img.save(thumb, "JPEG")
++    if thumb.exists() and not should_regenerate_cache(wall, thumb):
++        return thumb
++
++    thumb.parent.mkdir(parents=True, exist_ok=True)
++
++    previous = None
++    try:
++        previous = wallpaper_thumbnail_path.resolve(strict=True)
++    except OSError:
++        pass
++
++    temporary = thumb.with_suffix(".tmp.jpg")
++    temporary.unlink(missing_ok=True)
++    try:
++        if is_video_file(wall):
++            subprocess.run(
++                [
++                    "ffmpeg",
++                    "-hide_banner",
++                    "-loglevel",
++                    "error",
++                    "-y",
++                    "-i",
++                    str(wall),
++                    "-frames:v",
++                    "1",
++                    "-vf",
++                    "scale=384:-1:flags=lanczos",
++                    "-q:v",
++                    "2",
++                    str(temporary),
++                ],
++                check=True,
++                stderr=subprocess.DEVNULL,
++                stdout=subprocess.DEVNULL,
++            )
++        elif is_animated_image(wall):
++            with Image.open(wall) as img:
++                img.seek(0)
++                frame = img.convert("RGB")
++                frame.thumbnail((384, 384), Image.Resampling.LANCZOS)
++                frame.save(temporary, "JPEG", quality=82, optimize=True)
++        else:
++            with Image.open(wall) as img:
++                frame = img.convert("RGB")
++                frame.thumbnail((384, 384), Image.Resampling.LANCZOS)
++                frame.save(temporary, "JPEG", quality=82, optimize=True)
++        if not temporary.exists():
++            raise OSError(f"thumbnail command produced no output for {wall}")
++        os.replace(temporary, thumb)
++    except (OSError, ValueError, subprocess.SubprocessError):
++        temporary.unlink(missing_ok=True)
++        if previous and previous.exists():
++            return previous
++        if not thumb.exists():
++            Image.new("RGB", (128, 128), color="black").save(thumb, "JPEG", quality=70, optimize=True)
+
+     return thumb
+
+@@ -79,17 +148,18 @@
+     except (IOError, json.JSONDecodeError):
+         pass
+
+-    opts = {}
+-
+-    with Image.open(get_thumb(wall, cache)) as img:
+-        opts["variant"] = get_variant(img)
+-        img.thumbnail((1, 1), Image.Resampling.LANCZOS)
++    opts = {"mode": "dark", "variant": "tonalSpot"}
+
+-        # Cast the pixel to a tuple of 3 integers to safely unpack it
+-        pixel = cast(tuple[int, int, int], img.getpixel((0, 0)))
+-        hct = Hct.from_int(argb_from_rgb(*pixel))
+-
+-        opts["mode"] = "light" if hct.tone > 60 else "dark"
++    try:
++        with Image.open(get_thumb(wall, cache)) as img:
++            opts["variant"] = get_variant(img)
++            img.thumbnail((1, 1), Image.Resampling.LANCZOS)
++
++            pixel = cast(tuple[int, int, int], img.getpixel((0, 0)))
++            hct = Hct.from_int(argb_from_rgb(*pixel))
++            opts["mode"] = "light" if hct.tone > 60 else "dark"
++    except (OSError, ValueError, TypeError):
++        pass
+
+     opts_cache.parent.mkdir(parents=True, exist_ok=True)
+     with opts_cache.open("w") as f:
+@@ -101,10 +171,10 @@
+ def get_colours_for_wall(wall: Path | str, no_smart: bool) -> None:
+     wall = Path(wall)
+     scheme = get_scheme()
+-    cache = wallpapers_cache_dir / compute_hash(wall)
+-
+-    if wall.suffix.lower() == ".gif":
+-        wall = convert_gif(wall)
++    try:
++        cache = wallpapers_cache_dir / compute_hash(wall)
++    except OSError:
++        cache = wallpapers_cache_dir / "current"
+
+     name = "dynamic"
+
+@@ -120,29 +190,34 @@
+             }
+         )
+
++    try:
++        colours = get_colours_for_image(get_thumb(wall, cache), scheme)
++    except (OSError, ValueError, TypeError):
++        colours = scheme.colours
++
+     return {
+         "name": name,
+         "flavour": scheme.flavour,
+         "mode": scheme.mode,
+         "variant": scheme.variant,
+-        "colours": get_colours_for_image(get_thumb(wall, cache), scheme),
++        "colours": colours,
+     }
+
+
+ def convert_gif(wall: Path) -> Path:
++    """Keep the upstream helper name for callers while handling all live images."""
++
+     cache = wallpapers_cache_dir / compute_hash(wall)
+     output_path = cache / "first_frame.png"
+
+     if not output_path.exists():
+         output_path.parent.mkdir(parents=True, exist_ok=True)
+-        with Image.open(wall) as img:
+-            try:
++        try:
++            with Image.open(wall) as img:
+                 img.seek(0)
+-            except EOFError:
+-                pass
+-
+-            img = img.convert("RGB")
+-            img.save(output_path, "PNG")
++                img.convert("RGB").save(output_path, "PNG")
++        except (OSError, EOFError, ValueError):
++            output_path.unlink(missing_ok=True)
+
+     return output_path
+
+@@ -154,9 +229,6 @@
+     if not is_valid_image(wall):
+         raise ValueError(f'"{wall}" is not a valid image')
+
+-    # Use gif's 1st frame for thumb only
+-    wall_cache = convert_gif(wall) if wall.suffix.lower() == ".gif" else wall
+-
+     # Update files
+     wallpaper_path_path.parent.mkdir(parents=True, exist_ok=True)
+     wallpaper_path_path.write_text(str(wall))
+@@ -164,10 +236,13 @@
+     wallpaper_link_path.unlink(missing_ok=True)
+     wallpaper_link_path.symlink_to(wall)
+
+-    cache = wallpapers_cache_dir / compute_hash(wall_cache)
++    try:
++        cache = wallpapers_cache_dir / compute_hash(wall)
++    except OSError:
++        cache = wallpapers_cache_dir / "current"
+
+     # Generate thumbnail or get from cache
+-    thumb = get_thumb(wall_cache, cache)
++    thumb = get_thumb(wall, cache)
+     wallpaper_thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+     wallpaper_thumbnail_path.unlink(missing_ok=True)
+     wallpaper_thumbnail_path.symlink_to(thumb)
+@@ -176,7 +251,7 @@
+
+     # Change mode and variant based on wallpaper colour
+     if scheme.name == "dynamic" and not no_smart:
+-        smart_opts = get_smart_opts(wall_cache, cache)
++        smart_opts = get_smart_opts(wall, cache)
+         scheme.mode = smart_opts["mode"]
+         scheme.variant = smart_opts["variant"]
+
+--- a/src/caelestia/utils/paths.py
++++ b/src/caelestia/utils/paths.py
+@@ -33,7 +33,7 @@
+ scheme_data_dir: Path = cli_data_dir / "schemes"
+ scheme_cache_dir: Path = c_cache_dir / "schemes"
+
+-wallpapers_dir: Path = Path(os.getenv("CAELESTIA_WALLPAPERS_DIR", pictures_dir / "Wallpapers"))
++wallpapers_dir: Path = Path.home() / "Pictures" / "Wallpapers"
+ wallpaper_path_path: Path = c_state_dir / "wallpaper/path.txt"
+ wallpaper_link_path: Path = c_state_dir / "wallpaper/current"
+ wallpaper_thumbnail_path: Path = c_state_dir / "wallpaper/thumbnail.jpg"
+--- /dev/null
++++ b/src/caelestia/utils/video_cache.py
+@@ -0,0 +1,63 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++from PIL import Image
++
++VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mkv", ".mov", ".avi"})
++IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"})
++VALID_WALLPAPER_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
++
++
++def is_animated_image(path: str | Path) -> bool:
++    """Return whether Pillow reports multiple frames for a supported image."""
++
++    image_path = Path(path)
++    if image_path.suffix.lower() not in {".gif", ".webp"}:
++        return False
++
++    try:
++        with Image.open(image_path) as image:
++            return bool(getattr(image, "is_animated", False) or getattr(image, "n_frames", 1) > 1)
++    except (OSError, ValueError):
++        return False
++
++
++def is_animated_webp(path: str | Path) -> bool:
++    image_path = Path(path)
++    return image_path.suffix.lower() == ".webp" and is_animated_image(image_path)
++
++
++def is_video_file(path: str | Path) -> bool:
++    return Path(path).suffix.lower() in VIDEO_EXTENSIONS
++
++
++def is_live_file(path: str | Path) -> bool:
++    image_path = Path(path)
++    suffix = image_path.suffix.lower()
++    return suffix in VIDEO_EXTENSIONS or suffix == ".gif" or is_animated_webp(image_path)
++
++
++def classify_path(path: str | Path) -> str:
++    """Classify a wallpaper as static or live without trusting the extension alone."""
++
++    image_path = Path(path)
++    if image_path.suffix.lower() not in VALID_WALLPAPER_EXTENSIONS:
++        return "unsupported"
++    return "live" if is_live_file(image_path) else "static"
++
++
++def should_regenerate_cache(source: str | Path, cache: str | Path) -> bool:
++    source_path = Path(source)
++    cache_path = Path(cache)
++
++    if not source_path.exists():
++        return False
++
++    if not cache_path.exists():
++        return True
++
++    try:
++        return source_path.stat().st_mtime_ns > cache_path.stat().st_mtime_ns
++    except OSError:
++        return True

@@ -1,0 +1,713 @@
+--- a/Services/UI/WallpaperService.qml
++++ b/Services/UI/WallpaperService.qml
+@@ -24,6 +24,11 @@
+                                                    }, (_, i) => transitionsModel.get(i).key).filter(key => key !== "random" && key != "none")
+
+   property var wallpaperLists: ({})
++  // One shared wallpaper catalog. The panel exposes Static, Live, and All;
++  // animated WebP is checked by webpinfo so a static WebP remains an image.
++  readonly property var liveMediaFilters: ["*.gif", "*.webp", "*.mp4", "*.webm", "*.mkv", "*.mov", "*.avi"]
++  readonly property var mediaFilterOptions: ["All", "Static", "Live"]
++  property var mediaKinds: ({})
+   property int scanningCount: 0
+
+   // Cache for current wallpapers - can be updated directly since we use signals for notifications
+@@ -50,6 +55,7 @@
+   signal wallpaperDirectoryChanged(string screenName, string directory)
+   // Emitted when a monitor's directory changes
+   signal wallpaperListChanged(string screenName, int count)
++  signal mediaKindChanged(string path)
+
+   // Emitted when available wallpapers list changes
+
+@@ -948,6 +954,47 @@
+     return [];
+   }
+
++  function isLiveWallpaper(path) {
++    if (!path || isSolidColorPath(path)) {
++      return false;
++    }
++    const lower = path.toLowerCase();
++    if (lower.endsWith(".gif") || lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mkv")
++        || lower.endsWith(".mov") || lower.endsWith(".avi")) {
++      return true;
++    }
++    if (!lower.endsWith(".webp")) {
++      return false;
++    }
++    if (mediaKinds[path] === "live") {
++      return true;
++    }
++    if (mediaKinds[path] === "static" || mediaKinds[path] === "pending") {
++      return false;
++    }
++
++    mediaKinds[path] = "pending";
++    const command = ["webpinfo", path];
++    const processString = `
++      import QtQuick
++      import Quickshell.Io
++      Process { command: ${JSON.stringify(command)}; stdout: StdioCollector {}; stderr: StdioCollector {} }
++    `;
++    const processObject = Qt.createQmlObject(processString, root, "WebpProbe");
++    processObject.exited.connect(function (exitCode) {
++      var animated = false;
++      if (exitCode === 0) {
++        const lines = processObject.stdout.text.split(String.fromCharCode(10));
++        animated = lines.some(line => line.indexOf("Animation: 1") !== -1);
++      }
++      mediaKinds[path] = animated ? "live" : "static";
++      mediaKindChanged(path);
++      processObject.destroy();
++    });
++    processObject.running = true;
++    return false;
++  }
++
+   // -------------------------------------------------------------------
+   // Browse mode helper functions
+   // -------------------------------------------------------------------
+@@ -1148,7 +1195,7 @@
+     Logger.i("Wallpaper", "Starting scan for", screenName, "in", directory, "recursive:", recursive);
+
+     // Build find command args dynamically from ImageCacheService filters
+-    var filters = ImageCacheService.imageFilters;
++    var filters = ImageCacheService.imageFilters.concat(liveMediaFilters);
+     var findArgs = ["find", "-L", directory];
+
+     // Add depth limit for non-recursive
+--- a/Services/UI/ImageCacheService.qml
++++ b/Services/UI/ImageCacheService.qml
+@@ -6,6 +6,7 @@
+ import Quickshell.Wayland
+ import "../../Helpers/sha256.js" as Checksum
+ import qs.Commons
++import qs.Services.UI
+
+ Singleton {
+   id: root
+@@ -25,7 +26,7 @@
+
+   // Supported image formats - extended list when ImageMagick is available
+   readonly property var basicImageFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp"]
+-  readonly property var extendedImageFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.webp", "*.avif", "*.heic", "*.heif", "*.tiff", "*.tif", "*.pnm", "*.pgm", "*.ppm", "*.pbm", "*.svg", "*.svgz", "*.ico", "*.icns", "*.jxl", "*.jp2", "*.j2k", "*.exr", "*.hdr", "*.dds", "*.tga"]
++  readonly property var extendedImageFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.webp", "*.avif", "*.heic", "*.heif", "*.tiff", "*.tif", "*.pnm", "*.pgm", "*.ppm", "*.pbm", "*.svg", "*.svgz", "*.ico", "*.icns", "*.jxl", "*.jp2", "*.j2k", "*.exr", "*.hdr", "*.dds", "*.tga", "*.mp4", "*.webm", "*.mkv", "*.mov", "*.avi"]
+   readonly property var imageFilters: imageMagickAvailable ? extendedImageFilters : basicImageFilters
+
+   // Check if a file format needs conversion (not natively supported by Qt)
+@@ -34,6 +35,15 @@
+     return !basicImageFilters.includes(ext);
+   }
+
++  function isLiveSource(filePath) {
++    if (!filePath) {
++      return false;
++    }
++    const lower = filePath.toLowerCase();
++    return lower.endsWith(".gif") || lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mkv")
++        || lower.endsWith(".mov") || lower.endsWith(".avi") || WallpaperService.isLiveWallpaper(filePath);
++  }
++
+   // -------------------------------------------------
+   // Internal State
+   // -------------------------------------------------
+@@ -98,7 +108,9 @@
+       const cachedPath = wpThumbDir + cacheKey + ".png";
+
+       processRequest(cacheKey, cachedPath, sourcePath, callback, function () {
+-        if (imageMagickAvailable) {
++        if (isLiveSource(sourcePath)) {
++          startThumbnailProcessing(sourcePath, cachedPath, cacheKey);
++        } else if (imageMagickAvailable) {
+           startThumbnailProcessing(sourcePath, cachedPath, cacheKey);
+         } else {
+           queueFallbackProcessing(sourcePath, cachedPath, cacheKey, 384);
+@@ -116,6 +128,13 @@
+       return;
+     }
+
++    if (isLiveSource(sourcePath)) {
++      getThumbnail(sourcePath, function (cachedPath, success) {
++        callback(cachedPath, success);
++      });
++      return;
++    }
++
+     if (Settings.data.wallpaper.useOriginalImages && !needsConversion(sourcePath)) {
+       callback(sourcePath, false);
+       return;
+@@ -334,8 +353,10 @@
+     const srcEsc = sourcePath.replace(/'/g, "'\\''");
+     const dstEsc = outputPath.replace(/'/g, "'\\''");
+
+-    // Use Lanczos filter for high-quality downscaling, subtle unsharp mask, and PNG for lossless output
+-    const command = `magick '${srcEsc}' -auto-orient -filter Lanczos -resize '384x384^' -gravity center -extent 384x384 -unsharp 0x0.5 '${dstEsc}'`;
++    // ffmpeg first-frame extraction keeps media playback out of grid tiles.
++    const command = isLiveSource(sourcePath)
++      ? `ffmpeg -hide_banner -loglevel error -nostdin -y -i '${srcEsc}' -vf 'scale=384:384:force_original_aspect_ratio=decrease,pad=384:384:(ow-iw)/2:(oh-ih)/2' -frames:v 1 -f image2 '${dstEsc}'`
++      : `magick '${srcEsc}' -auto-orient -filter Lanczos -resize '384x384^' -gravity center -extent 384x384 -unsharp 0x0.5 '${dstEsc}'`;
+
+     runProcess(command, cacheKey, outputPath, sourcePath);
+   }
+--- a/Services/Theming/AppThemeService.qml
++++ b/Services/Theming/AppThemeService.qml
+@@ -77,6 +77,13 @@
+       return;
+     }
+     const mode = Settings.data.colorSchemes.darkMode ? "dark" : "light";
++    if (WallpaperService.isLiveWallpaper(wp)) {
++      // Palette generation consumes the cached first frame, never the live stream.
++      ImageCacheService.getThumbnail(wp, function (cachedPath, success) {
++        TemplateProcessor.processWallpaperColors(success ? cachedPath : wp, mode);
++      });
++      return;
++    }
+     TemplateProcessor.processWallpaperColors(wp, mode);
+   }
+
+--- a/Modules/Panels/Wallpaper/WallpaperPanel.qml
++++ b/Modules/Panels/Wallpaper/WallpaperPanel.qml
+@@ -140,6 +140,8 @@
+     }
+     property var currentScreen: Quickshell.screens[currentScreenIndex]
+     property string filterText: ""
++    // Native local media picker filter: All, Static, or Live.
++    property string mediaFilter: "All"
+     property int appearanceTabIndex: 0
+     readonly property bool headerScreensStripAvailable: !Settings.data.wallpaper.setWallpaperOnAllMonitors || Settings.data.wallpaper.enableMultiMonitorDirectories
+     readonly property bool headerDevicesButtonVisible: Quickshell.screens.length > 1 || Settings.data.wallpaper.enableMultiMonitorDirectories
+@@ -631,6 +633,30 @@
+         }
+       }
+
++      NTabBar {
++        id: mediaFilterBar
++        visible: !Settings.data.wallpaper.useWallhaven
++        Layout.fillWidth: true
++        currentIndex: panelContent.mediaFilter === "Static" ? 1 : panelContent.mediaFilter === "Live" ? 2 : 0
++        spacing: Style.marginS
++        distributeEvenly: true
++        onCurrentIndexChanged: {
++          if (currentIndex < 0) {
++            return;
++          }
++          panelContent.mediaFilter = ["All", "Static", "Live"][currentIndex];
++          for (var i = 0; i < screenRepeater.count; i++) {
++            var view = screenRepeater.itemAt(i);
++            if (view) {
++              view.updateFiltered();
++            }
++          }
++        }
++        NTabButton { text: "All"; tabIndex: 0; checked: mediaFilterBar.currentIndex === 0 }
++        NTabButton { text: "Static"; tabIndex: 1; checked: mediaFilterBar.currentIndex === 1 }
++        NTabButton { text: "Live"; tabIndex: 2; checked: mediaFilterBar.currentIndex === 2 }
++      }
++
+       // Content stack: Wallhaven or Local
+       NBox {
+         Layout.fillWidth: true
+@@ -724,9 +750,17 @@
+
+       // Add files
+       for (var i = 0; i < wallpapersList.length; i++) {
++        const candidatePath = wallpapersList[i];
++        const candidateIsLive = WallpaperService.isLiveWallpaper(candidatePath);
++        if (panelContent.mediaFilter === "Static" && candidateIsLive) {
++          continue;
++        }
++        if (panelContent.mediaFilter === "Live" && !candidateIsLive) {
++          continue;
++        }
+         combinedItems.push({
+-                             "path": wallpapersList[i],
+-                             "name": wallpapersList[i].split('/').pop(),
++                             "path": candidatePath,
++                             "name": candidatePath.split('/').pop(),
+                              "isDirectory": false
+                            });
+       }
+@@ -862,6 +896,9 @@
+         updateFiltered(true);   // recompute filteredItems but skip full model rebuild
+         handleFavoriteMove(path); // animate the item to its new position
+       }
++      function onMediaKindChanged(path) {
++        updateFiltered();
++      }
+     }
+
+     function refreshWallpaperScreenData() {
+@@ -899,9 +936,10 @@
+       if (isDirectory) {
+         WallpaperService.setBrowsePath(targetScreen.name, path);
+       } else {
+-        var screen = Settings.data.wallpaper.setWallpaperOnAllMonitors ? undefined : targetScreen.name;
+-        WallpaperService.changeWallpaper(path, screen, WallpaperService.wallpaperSelectionAppearance);
+-        WallpaperService.applyFavoriteTheme(path, screen, WallpaperService.wallpaperSelectionAppearance);
++        // The persisted current path is global: selectItem(path, undefined)
++        // applies one choice to every output and survives hotplug/restart.
++        WallpaperService.changeWallpaper(path, undefined, WallpaperService.wallpaperSelectionAppearance);
++        WallpaperService.applyFavoriteTheme(path, undefined, WallpaperService.wallpaperSelectionAppearance);
+       }
+     }
+
+--- a/Modules/Background/Background.qml
++++ b/Modules/Background/Background.qml
+@@ -1,4 +1,5 @@
+ import QtQuick
++import QtMultimedia
+ import Quickshell
+ import Quickshell.Wayland
+ import qs.Commons
+@@ -54,6 +55,14 @@
+       property string futureWallpaper: ""
+       // Track the original wallpaper path being transitioned to (before caching)
+       property string transitioningToOriginalPath: ""
++      // Invalidate delayed cache/startup callbacks when media classification promotes a path.
++      property int wallpaperGeneration: 0
++      property int startupTransitionGeneration: -1
++      property string startupTransitionPath: ""
++      property int debounceGeneration: -1
++      property string debouncePath: ""
++      property int nextWallpaperGeneration: -1
++      property string nextWallpaperPersistedPath: ""
+
+       // Fillmode default is "crop"
+       property real fillMode: WallpaperService.getFillModeUniform()
+@@ -67,9 +76,35 @@
+       property vector4d solidColor1: Qt.vector4d(_solidColor1.r, _solidColor1.g, _solidColor1.b, 1.0)
+       property vector4d solidColor2: Qt.vector4d(_solidColor2.r, _solidColor2.g, _solidColor2.b, 1.0)
+
+-      Component.onCompleted: setWallpaperInitial()
++      // Live wallpapers use one muted, owned player per output. Static images
++      // continue through the native shader transition path.
++      MediaPlayer {
++        id: livePlayer
++        loops: MediaPlayer.Infinite
++        audioOutput: AudioOutput {
++          muted: true
++          volume: 0.0
++        }
++        videoOutput: liveVideoOutput
++        onErrorOccurred: error => Logger.w("Live wallpaper playback failed:", errorString)
++      }
++
++      VideoOutput {
++        id: liveVideoOutput
++        anchors.fill: parent
++        fillMode: VideoOutput.PreserveAspectCrop
++        visible: false
++      }
++
++      Component.onCompleted: {
++        WallpaperService.mediaKindChanged.connect(onMediaKindChanged);
++        setWallpaperInitial();
++      }
+
+       Component.onDestruction: {
++        WallpaperService.mediaKindChanged.disconnect(onMediaKindChanged);
++        livePlayer.stop();
++        livePlayer.source = "";
+         transitionAnimation.stop();
+         startupTransitionTimer.stop();
+         debounceTimer.stop();
+@@ -95,6 +130,40 @@
+         }
+       }
+
++      function reEvaluateWallpaperKind(path) {
++        if (!path || !WallpaperService.isLiveWallpaper(path)) {
++          return;
++        }
++        const persisted = WallpaperService.getWallpaper(modelData.name);
++        if (_pathStr(persisted) !== _pathStr(path)) {
++          return;
++        }
++        if (_pathStr(livePlayer.source) === _pathStr(path) && liveVideoOutput.visible) {
++          return;
++        }
++
++        wallpaperGeneration += 1;
++        startupTransitionTimer.stop();
++        startupTransitionGeneration = -1;
++        startupTransitionPath = "";
++        transitionAnimation.stop();
++        isStartupTransition = false;
++        debounceTimer.stop();
++        debounceGeneration = -1;
++        debouncePath = "";
++        transitioningToOriginalPath = "";
++        nextWallpaper.pendingTransition = false;
++        nextWallpaperGeneration = -1;
++        nextWallpaperPersistedPath = "";
++        futureWallpaper = path;
++        setWallpaperImmediate(path);
++        WallpaperService.wallpaperProcessingComplete(modelData.name, path, "");
++      }
++
++      function onMediaKindChanged(path) {
++        reEvaluateWallpaperKind(path);
++      }
++
+       Connections {
+         target: CompositorService
+         function onDisplayScalesChanged() {
+@@ -112,7 +181,11 @@
+             const compositorScale = CompositorService.getDisplayScale(modelData.name);
+             const targetWidth = Math.round(modelData.width * compositorScale);
+             const targetHeight = Math.round(modelData.height * compositorScale);
++            const requestGeneration = wallpaperGeneration;
+             ImageCacheService.getLarge(currentPath, targetWidth, targetHeight, function (cachedPath, success) {
++              if (!isCurrentWallpaperRequest(currentPath, requestGeneration)) {
++                return;
++              }
+               WallpaperService.wallpaperProcessingComplete(modelData.name, currentPath, success ? cachedPath : "");
+             });
+             return;
+@@ -140,7 +213,16 @@
+         interval: 333
+         running: false
+         repeat: false
+-        onTriggered: changeWallpaper()
++        onTriggered: {
++          const requestGeneration = debounceGeneration;
++          const requestPath = debouncePath;
++          debounceGeneration = -1;
++          debouncePath = "";
++          if (!isCurrentWallpaperRequest(requestPath, requestGeneration)) {
++            return;
++          }
++          changeWallpaper(requestPath, requestGeneration);
++        }
+       }
+
+       // Delay startup transition to ensure the compositor has mapped the window
+@@ -186,6 +268,10 @@
+             Logger.w("Next wallpaper failed to load:", source);
+             pendingTransition = false;
+           } else if (status === Image.Ready) {
++            if (pendingTransition && !isCurrentWallpaperRequest(nextWallpaperPersistedPath, nextWallpaperGeneration)) {
++              pendingTransition = false;
++              return;
++            }
+             if (!wallpaperReady) {
+               wallpaperReady = true;
+             }
+@@ -446,13 +532,26 @@
+           const tempSource = nextWallpaper.source;
+           currentWallpaper.source = tempSource;
+           transitionProgress = 0.0;
++          const finishGeneration = wallpaperGeneration;
++          const finishPersistedPath = _pathStr(WallpaperService.getWallpaper(modelData.name));
+
+           // Now clear nextWallpaper after currentWallpaper has the new source
+           // Force complete cleanup to free texture memory
+           Qt.callLater(() => {
++                         if (finishGeneration !== wallpaperGeneration
++                             || _pathStr(WallpaperService.getWallpaper(modelData.name)) !== finishPersistedPath) {
++                           return;
++                         }
+                          nextWallpaper.source = "";
++                         nextWallpaper.pendingTransition = false;
++                         nextWallpaperGeneration = -1;
++                         nextWallpaperPersistedPath = "";
+                          isSolid2 = false;
+                          Qt.callLater(() => {
++                                        if (finishGeneration !== wallpaperGeneration
++                                            || _pathStr(WallpaperService.getWallpaper(modelData.name)) !== finishPersistedPath) {
++                                          return;
++                                        }
+                                         currentWallpaper.asynchronous = true;
+                                       });
+                        });
+@@ -463,6 +562,9 @@
+       // QML Image.source is a url type; comparing url === string can return
+       // false even for identical paths. This converts both sides to strings.
+       function _pathStr(p) {
++        if (p === undefined || p === null) {
++          return "";
++        }
+         var s = p.toString();
+         // QUrl.toString() may add a file:// prefix for local paths
+         if (s.startsWith("file://")) {
+@@ -471,15 +573,35 @@
+         return s;
+       }
+
++      function isCurrentWallpaperRequest(path, generation) {
++        if (generation !== wallpaperGeneration) {
++          return false;
++        }
++        const persisted = WallpaperService.getWallpaper(modelData.name);
++        return _pathStr(persisted) === _pathStr(path);
++      }
++
+       // ------------------------------------------------------
+-      function setWallpaperInitial() {
++      function setWallpaperInitial(initialGeneration) {
++        const requestGeneration = initialGeneration === undefined ? ++wallpaperGeneration : initialGeneration;
++
+         // On startup, defer assigning wallpaper until the services are ready
+         if (!WallpaperService || !WallpaperService.isInitialized) {
+-          Qt.callLater(setWallpaperInitial);
++          Qt.callLater(function () {
++            if (requestGeneration !== wallpaperGeneration) {
++              return;
++            }
++            setWallpaperInitial(requestGeneration);
++          });
+           return;
+         }
+         if (!ImageCacheService || !ImageCacheService.initialized) {
+-          Qt.callLater(setWallpaperInitial);
++          Qt.callLater(function () {
++            if (requestGeneration !== wallpaperGeneration) {
++              return;
++            }
++            setWallpaperInitial(requestGeneration);
++          });
+           return;
+         }
+
+@@ -487,7 +609,7 @@
+         if (Settings.data.wallpaper.useSolidColor) {
+           var solidPath = WallpaperService.createSolidColorPath(Settings.data.wallpaper.solidColor.toString());
+           futureWallpaper = solidPath;
+-          performStartupTransition();
++          performStartupTransition(solidPath, requestGeneration);
+           WallpaperService.wallpaperProcessingComplete(modelData.name, solidPath, "");
+           return;
+         }
+@@ -497,7 +619,14 @@
+         // Check if the path is a solid color
+         if (WallpaperService.isSolidColorPath(wallpaperPath)) {
+           futureWallpaper = wallpaperPath;
+-          performStartupTransition();
++          performStartupTransition(wallpaperPath, requestGeneration);
++          WallpaperService.wallpaperProcessingComplete(modelData.name, wallpaperPath, "");
++          return;
++        }
++
++        if (WallpaperService.isLiveWallpaper(wallpaperPath)) {
++          futureWallpaper = wallpaperPath;
++          performStartupTransition(wallpaperPath, requestGeneration);
+           WallpaperService.wallpaperProcessingComplete(modelData.name, wallpaperPath, "");
+           return;
+         }
+@@ -507,13 +636,16 @@
+         const targetHeight = Math.round(modelData.height * compositorScale);
+
+         ImageCacheService.getLarge(wallpaperPath, targetWidth, targetHeight, function (cachedPath, success) {
++          if (!isCurrentWallpaperRequest(wallpaperPath, requestGeneration)) {
++            return;
++          }
+           if (success) {
+             futureWallpaper = cachedPath;
+           } else {
+             // Fallback to original
+             futureWallpaper = wallpaperPath;
+           }
+-          performStartupTransition();
++          performStartupTransition(wallpaperPath, requestGeneration);
+           // Pass cached path for blur optimization (already resized)
+           WallpaperService.wallpaperProcessingComplete(modelData.name, wallpaperPath, success ? cachedPath : "");
+         });
+@@ -522,16 +654,28 @@
+       // ------------------------------------------------------
+       function requestPreprocessedWallpaper(originalPath) {
+         // If we're already transitioning to this exact wallpaper, skip the request
+-        if (transitioning && originalPath === transitioningToOriginalPath) {
++        if (transitioning && _pathStr(originalPath) === _pathStr(transitioningToOriginalPath)) {
+           return;
+         }
+
+         // Store the original path we're working towards
+         transitioningToOriginalPath = originalPath;
++        const requestGeneration = ++wallpaperGeneration;
+
+         // Handle solid color paths - no preprocessing needed
+         if (WallpaperService.isSolidColorPath(originalPath)) {
+           futureWallpaper = originalPath;
++          debounceGeneration = requestGeneration;
++          debouncePath = originalPath;
++          debounceTimer.restart();
++          WallpaperService.wallpaperProcessingComplete(modelData.name, originalPath, "");
++          return;
++        }
++
++        if (WallpaperService.isLiveWallpaper(originalPath)) {
++          futureWallpaper = originalPath;
++          debounceGeneration = requestGeneration;
++          debouncePath = originalPath;
+           debounceTimer.restart();
+           WallpaperService.wallpaperProcessingComplete(modelData.name, originalPath, "");
+           return;
+@@ -543,7 +687,8 @@
+
+         ImageCacheService.getLarge(originalPath, targetWidth, targetHeight, function (cachedPath, success) {
+           // Ignore stale callback if we've moved on to a different wallpaper
+-          if (originalPath !== transitioningToOriginalPath) {
++          if (!isCurrentWallpaperRequest(originalPath, requestGeneration)
++              || _pathStr(originalPath) !== _pathStr(transitioningToOriginalPath)) {
+             return;
+           }
+           if (success) {
+@@ -559,6 +704,8 @@
+             return;
+           }
+
++          debounceGeneration = requestGeneration;
++          debouncePath = originalPath;
+           debounceTimer.restart();
+           // Pass cached path for blur optimization (already resized)
+           WallpaperService.wallpaperProcessingComplete(modelData.name, originalPath, success ? cachedPath : "");
+@@ -570,6 +717,22 @@
+         transitionAnimation.stop();
+         transitionProgress = 0.0;
+
++        if (WallpaperService.isLiveWallpaper(source)) {
++          currentWallpaper.source = "";
++          nextWallpaper.source = "";
++          nextWallpaper.pendingTransition = false;
++          nextWallpaperGeneration = -1;
++          nextWallpaperPersistedPath = "";
++          shaderLoader.active = false;
++          liveVideoOutput.visible = true;
++          livePlayer.source = source;
++          livePlayer.play();
++          wallpaperReady = true;
++          return;
++        }
++
++        stopLiveWallpaperBackend();
++
+         // Check if this is a solid color
+         var isSolidSource = WallpaperService.isSolidColorPath(source);
+         isSolid1 = isSolidSource;
+@@ -590,16 +753,37 @@
+         // Clear nextWallpaper completely to free texture memory
+         nextWallpaper.source = "";
+         nextWallpaper.sourceSize = undefined;
++        nextWallpaper.pendingTransition = false;
++        nextWallpaperGeneration = -1;
++        nextWallpaperPersistedPath = "";
+
+         currentWallpaper.source = "";
+
++        const applyGeneration = wallpaperGeneration;
++        const applyPersistedPath = _pathStr(WallpaperService.getWallpaper(modelData.name));
+         Qt.callLater(() => {
++                       if (applyGeneration !== wallpaperGeneration
++                           || _pathStr(WallpaperService.getWallpaper(modelData.name)) !== applyPersistedPath) {
++                         return;
++                       }
+                        currentWallpaper.source = source;
+                      });
+       }
+
+       // ------------------------------------------------------
++      function stopLiveWallpaperBackend() {
++        livePlayer.stop();
++        livePlayer.source = "";
++        liveVideoOutput.visible = false;
++        shaderLoader.active = true;
++      }
++
++      // ------------------------------------------------------
+       function setWallpaperWithTransition(source) {
++        if (WallpaperService.isLiveWallpaper(source)) {
++          setWallpaperImmediate(source);
++          return;
++        }
+         // Check if this is a solid color transition
+         var isSolidSource = WallpaperService.isSolidColorPath(source);
+
+@@ -631,14 +815,27 @@
+           _solidColor1 = _solidColor2;
+           const newCurrentSource = nextWallpaper.source;
+           currentWallpaper.source = newCurrentSource;
++          const resumeGeneration = wallpaperGeneration;
++          const resumePersistedPath = _pathStr(WallpaperService.getWallpaper(modelData.name));
+
+           // Now clear nextWallpaper after current has the new source
+           Qt.callLater(() => {
++                         if (resumeGeneration !== wallpaperGeneration
++                             || _pathStr(WallpaperService.getWallpaper(modelData.name)) !== resumePersistedPath) {
++                           return;
++                         }
+                          nextWallpaper.source = "";
++                         nextWallpaper.pendingTransition = false;
++                         nextWallpaperGeneration = -1;
++                         nextWallpaperPersistedPath = "";
+                          isSolid2 = false;
+
+                          // Now set the next wallpaper after a brief delay
+                          Qt.callLater(() => {
++                                        if (resumeGeneration !== wallpaperGeneration
++                                            || _pathStr(WallpaperService.getWallpaper(modelData.name)) !== resumePersistedPath) {
++                                          return;
++                                        }
+                                         _startTransitionTo(source, isSolidSource);
+                                       });
+                        });
+@@ -650,6 +847,9 @@
+
+       // Helper to start transition to a new source
+       function _startTransitionTo(source, isSolidSource) {
++        stopLiveWallpaperBackend();
++        nextWallpaperGeneration = wallpaperGeneration;
++        nextWallpaperPersistedPath = _pathStr(WallpaperService.getWallpaper(modelData.name));
+         isSolid2 = isSolidSource;
+
+         if (isSolidSource) {
+@@ -678,7 +878,11 @@
+
+       // ------------------------------------------------------
+       // Main method that actually trigger the wallpaper change
+-      function changeWallpaper() {
++      function changeWallpaper(requestPath, requestGeneration) {
++        if (requestPath !== undefined && !isCurrentWallpaperRequest(requestPath, requestGeneration)) {
++          return;
++        }
++
+         // Pick a transition from the user's selected list
+         var selected = Settings.data.wallpaper.transitionType;
+         if (!selected || selected.length === 0) {
+@@ -734,10 +938,20 @@
+       // Dedicated function for startup animation
+       // Sets up transition params, then defers the actual animation
+       // to allow the compositor time to map the window.
+-      function performStartupTransition() {
++      function performStartupTransition(sourcePath, requestGeneration) {
++        if (!isCurrentWallpaperRequest(sourcePath, requestGeneration)) {
++          return;
++        }
++
++        startupTransitionGeneration = requestGeneration;
++        startupTransitionPath = _pathStr(sourcePath);
++
+         if (Settings.data.wallpaper.skipStartupTransition) {
++          startupTransitionTimer.stop();
+           setWallpaperImmediate(futureWallpaper);
+           isStartupTransition = false;
++          startupTransitionGeneration = -1;
++          startupTransitionPath = "";
+           return;
+         }
+
+@@ -787,6 +1001,14 @@
+
+       // Actually kick off the startup transition after the delay
+       function _executeStartupTransition() {
++        const requestGeneration = startupTransitionGeneration;
++        const requestPath = startupTransitionPath;
++        startupTransitionGeneration = -1;
++        startupTransitionPath = "";
++        if (!isCurrentWallpaperRequest(requestPath, requestGeneration)) {
++          return;
++        }
++
+         if (transitionType === "none") {
+           setWallpaperImmediate(futureWallpaper);
+           isStartupTransition = false;

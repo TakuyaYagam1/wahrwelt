@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
-	const input = `url = "github:SunnydeuS/Caelestia-Live-Wallpapers-Integration/3e2b9770e360c9159970b4ebbe6483cddd7529df";`
+func TestCaelestiaLiveWallpapersIntegrationIsVendoredAndDefault(t *testing.T) {
 	for _, path := range []string{
 		"../../../../flake.nix",
 		"../../../NixOS/flake.nix",
@@ -17,28 +16,14 @@ func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
 		"../../../NixOS/presets/personal/flake.nix",
 	} {
 		source := readCaelestiaLiveWallpapersContractFile(t, path)
-		if !strings.Contains(source, input) || !strings.Contains(source, "flake = false;") {
-			t.Fatalf("%s must pin the non-flake live wallpaper source\n%s", path, source)
+		if strings.Contains(source, "caelestia-live-wallpapers") || strings.Contains(source, "SunnydeuS/Caelestia-Live-Wallpapers-Integration") {
+			t.Fatalf("%s must not retain the obsolete external live wallpaper input\n%s", path, source)
 		}
-	}
-
-	minimal := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/presets/minimal/flake.nix")
-	if strings.Contains(minimal, "caelestia-live-wallpapers") {
-		t.Fatalf("minimal preset must not include the desktop-only integration\n%s", minimal)
 	}
 
 	options := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/modules/mysetup-options.nix")
-	if !strings.Contains(options, "caelestiaLiveWallpapers = boolOption false;") {
-		t.Fatalf("live wallpapers must retain a safe option-level fallback\n%s", options)
-	}
-	for _, want := range []string{
-		"config.wahrwelt.features.caelestiaLiveWallpapers",
-		"lib.mkDefault (",
-		"config.wahrwelt.packages.preset != \"minimal\"",
-	} {
-		if !strings.Contains(options, want) {
-			t.Fatalf("desktop presets must enable live wallpapers by default via %q\n%s", want, options)
-		}
+	if strings.Contains(options, "caelestiaLiveWallpapers") {
+		t.Fatalf("live wallpaper support is part of every desktop shell and must not require a feature flag\n%s", options)
 	}
 
 	hostVars := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/hosts/NixOS/host-vars.nix")
@@ -48,10 +33,8 @@ func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
 
 	homeModule := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/home/caelestia/default.nix")
 	for _, want := range []string{
-		"wahrwelt.features.caelestiaLiveWallpapers",
-		"wahrweltLib.presets.desktopOrMore wahrwelt",
-		"wahrweltPkgs.caelestia-live-shell",
-		"wahrweltPkgs.caelestia-live-cli",
+		"wahrweltPkgs.caelestia-shell",
+		"wahrweltPkgs.caelestia-cli",
 	} {
 		if !strings.Contains(homeModule, want) {
 			t.Fatalf("Caelestia Home Manager integration is missing %q\n%s", want, homeModule)
@@ -62,18 +45,15 @@ func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
 	}
 }
 
-func TestCaelestiaLiveWallpapersPackageAvoidsMutableSystemPaths(t *testing.T) {
-	pkg := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/pkgs/caelestia-live-wallpapers.nix")
+func TestCaelestiaLiveWallpapersPackageIsStrictAndPrivate(t *testing.T) {
+	pkg := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/home/caelestia/patches/package.nix")
 	for _, want := range []string{
 		"overridePythonAttrs",
-		"patchPhase = (old.patchPhase or \"\")",
+		"--fuzz=0",
 		"prev.qt6.qtmultimedia",
 		"update-caelestia-live-thumbs",
-		"command: [\"${thumbnailTool}/bin/update-caelestia-live-thumbs\"",
-		"readonly property list<string> videoExtensions",
-		"function isVideoPath(path: string): bool",
-		"if (filterMode === 1 || filterMode === 2)",
-		"path: Paths.wallsdir",
+		"inherit cli;",
+		"shell = shellBase.overrideAttrs",
 	} {
 		if !strings.Contains(pkg, want) {
 			t.Fatalf("Caelestia live wallpaper package is missing %q\n%s", want, pkg)
@@ -82,6 +62,20 @@ func TestCaelestiaLiveWallpapersPackageAvoidsMutableSystemPaths(t *testing.T) {
 	for _, forbidden := range []string{"/usr/lib", "/etc/xdg"} {
 		if strings.Contains(pkg, forbidden) {
 			t.Fatalf("Caelestia live wallpaper package must not write to %q\n%s", forbidden, pkg)
+		}
+	}
+	if strings.Contains(pkg, "inherit thumbnailTool") {
+		t.Fatalf("thumbnail helper must remain private to the patched shell\n%s", pkg)
+	}
+
+	provenance := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/home/caelestia/patches/vendor/NOTICE.md")
+	for _, want := range []string{
+		"SunnydeuS/Caelestia-Live-Wallpapers-Integration",
+		"3e2b9770e360c9159970b4ebbe6483cddd7529df",
+		"GNU GPL-3.0-only",
+	} {
+		if !strings.Contains(provenance, want) {
+			t.Fatalf("vendored Caelestia source is missing provenance %q\n%s", want, provenance)
 		}
 	}
 }

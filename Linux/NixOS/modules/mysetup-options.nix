@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ lib, ... }:
 
 let
   inherit (lib) mkOption types;
@@ -94,7 +94,6 @@ let
           options = {
             secureBoot = boolOption false;
             ctfTools = boolOption false;
-            caelestiaLiveWallpapers = boolOption false;
             claudeDesktopCowork = boolOption false;
             omnirouter = boolOption false;
             portainer = boolOption false;
@@ -205,7 +204,4 @@ in
     description = "Canonical Wahrwelt host/user configuration.";
   };
 
-  config.wahrwelt.features.caelestiaLiveWallpapers = lib.mkDefault (
-    config.wahrwelt.packages.preset != "minimal"
-  );
 }

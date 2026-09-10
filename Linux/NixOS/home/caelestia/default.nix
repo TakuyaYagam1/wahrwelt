@@ -3,8 +3,6 @@
   homeLibs,
   pkgs,
   lib,
-  wahrwelt,
-  wahrweltLib,
   ...
 }:
 
@@ -15,18 +13,8 @@ let
   shellDefaults = builtins.fromJSON (builtins.readFile ./default-settings.json);
   shellSettings = lib.recursiveUpdate shellDefaults config.caelestiaShellSettings;
   shellJson = pkgs.writeText "caelestia-shell.json" (builtins.toJSON shellSettings);
-  liveWallpapersEnabled =
-    wahrwelt.features.caelestiaLiveWallpapers or (wahrweltLib.presets.desktopOrMore wahrwelt);
-  caelestiaPackage =
-    if liveWallpapersEnabled then
-      wahrweltPkgs.caelestia-live-shell
-    else
-      wahrweltPkgs.caelestia-shell or pkgs.caelestia-shell;
-  caelestiaCliPackage =
-    if liveWallpapersEnabled then
-      wahrweltPkgs.caelestia-live-cli
-    else
-      wahrweltPkgs.caelestia-cli or pkgs.caelestia-cli;
+  caelestiaPackage = wahrweltPkgs.caelestia-shell or pkgs.caelestia-shell;
+  caelestiaCliPackage = wahrweltPkgs.caelestia-cli or pkgs.caelestia-cli;
 in
 {
   imports = [
