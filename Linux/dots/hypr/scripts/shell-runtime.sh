@@ -382,6 +382,7 @@ wahrwelt_managed_regular_fd=""
 wahrwelt_default_shell_profile="caelestia"
 
 wahrwelt_selector_pattern='((^|[ /])(qs|quickshell)([[:space:]].*)?-c[[:space:]]wahrwelt-shell-selector([[:space:]]|$))|quickshell/wahrwelt-shell-selector([/[:space:]]|$)'
+wahrwelt_noctalia_v5_pattern='(^|/)(noctalia|\.noctalia-wrapped_?)([[:space:]]|$)'
 wahrwelt_noctalia_v4_pattern='(^|[ /])noctalia-shell([[:space:]]|$)|share/noctalia-shell'
 wahrwelt_caelestia_pattern='share/caelestia-shell|caelestia-shell|(^|[ /])caelestia[[:space:]]+shell([[:space:]]|$)'
 wahrwelt_noctalia_v4_env_pattern='^QS_CONFIG_PATH=.*/share/noctalia-shell$'
@@ -628,7 +629,7 @@ wahrwelt_noctalia_pids() {
 
   {
     pgrep -u "$wahrwelt_user_name" -x noctalia 2>/dev/null || true
-    pgrep -u "$wahrwelt_user_name" -f '(^|/)noctalia([[:space:]]|$)' 2>/dev/null || true
+    pgrep -u "$wahrwelt_user_name" -f "$wahrwelt_noctalia_v5_pattern" 2>/dev/null || true
     pgrep -u "$wahrwelt_user_name" -f "$wahrwelt_noctalia_v4_pattern" 2>/dev/null || true
     for pid in $(wahrwelt_quickshell_pids); do
       if wahrwelt_pid_has_env_regex "$pid" "$wahrwelt_noctalia_v4_env_pattern"; then
