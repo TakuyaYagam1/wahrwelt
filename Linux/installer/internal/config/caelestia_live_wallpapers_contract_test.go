@@ -49,6 +49,7 @@ func TestCaelestiaLiveWallpapersIntegrationIsPinnedAndOptional(t *testing.T) {
 	homeModule := readCaelestiaLiveWallpapersContractFile(t, "../../../NixOS/home/caelestia/default.nix")
 	for _, want := range []string{
 		"wahrwelt.features.caelestiaLiveWallpapers",
+		"wahrweltLib.presets.desktopOrMore wahrwelt",
 		"wahrweltPkgs.caelestia-live-shell",
 		"wahrweltPkgs.caelestia-live-cli",
 	} {

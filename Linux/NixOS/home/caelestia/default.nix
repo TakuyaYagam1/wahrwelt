@@ -4,6 +4,7 @@
   pkgs,
   lib,
   wahrwelt,
+  wahrweltLib,
   ...
 }:
 
@@ -14,7 +15,8 @@ let
   shellDefaults = builtins.fromJSON (builtins.readFile ./default-settings.json);
   shellSettings = lib.recursiveUpdate shellDefaults config.caelestiaShellSettings;
   shellJson = pkgs.writeText "caelestia-shell.json" (builtins.toJSON shellSettings);
-  liveWallpapersEnabled = wahrwelt.features.caelestiaLiveWallpapers;
+  liveWallpapersEnabled =
+    wahrwelt.features.caelestiaLiveWallpapers or (wahrweltLib.presets.desktopOrMore wahrwelt);
   caelestiaPackage =
     if liveWallpapersEnabled then
       wahrweltPkgs.caelestia-live-shell
