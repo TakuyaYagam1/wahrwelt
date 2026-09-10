@@ -86,6 +86,9 @@ check_live_wallpaper_contract() {
     'reconcileVideoScriptPath' \
     'reconcileVideoBackend' \
     'onScreensChanged' \
+    'target: Config' \
+    'onReadyChanged' \
+    'Config.ready' \
     'Component.onCompleted' \
     'XDG_CONFIG_HOME' \
     '__restore_video_wallpaper.sh' \
@@ -109,6 +112,17 @@ check_live_wallpaper_contract() {
     if ! grep -Fq "\"$filter\"" "$selector"; then
       printf 'FAIL: End4 %s wallpaper selector is missing %s filter: %s\n' \
         "$variant" "$filter" "$selector" >&2
+      exit 1
+    fi
+  done
+
+  for expected in \
+    'Component.onCompleted: Qt.callLater(root.updateThumbnails)' \
+    'onEffectiveDirectoryChanged' \
+    'Wallpapers.generateThumbnail(thumbnailSizeName, Wallpapers.effectiveDirectory)'; do
+    if ! grep -Fq "$expected" "$selector"; then
+      printf 'FAIL: End4 %s wallpaper selector does not generate thumbnails for the active directory: missing %s in %s\n' \
+        "$variant" "$expected" "$selector" >&2
       exit 1
     fi
   done
@@ -200,6 +214,14 @@ check_live_wallpaper_contract() {
   if grep -Fq 'MediaPlayer' "$directory_item"; then
     printf 'FAIL: End4 %s wallpaper grid attempts playback in a tile: %s\n' \
       "$variant" "$directory_item" >&2
+    exit 1
+  fi
+
+  if ! grep -Fq 'source: root.mediaKind === "static" ? root.path : ""' "$surface" ||
+    ! grep -Fq 'source: root.fallbackPath.length > 0 ? root.fallbackPath' "$surface" ||
+    grep -Fq 'sourcePath: root.fallbackPath.length > 0 ? root.fallbackPath' "$surface"; then
+    printf 'FAIL: End4 %s live renderer decodes media with the wrong image backend: %s\n' \
+      "$variant" "$surface" >&2
     exit 1
   fi
 

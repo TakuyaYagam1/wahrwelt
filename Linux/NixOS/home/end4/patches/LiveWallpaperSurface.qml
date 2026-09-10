@@ -52,7 +52,7 @@ Item {
         id: staticImage
         anchors.fill: parent
         visible: root.active && root.mediaKind === "static" && !root.failed
-        source: root.path
+        source: root.mediaKind === "static" ? root.path : ""
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: false
@@ -70,12 +70,11 @@ Item {
         onStatusChanged: if (status === Image.Error) root.showFallback()
     }
 
-    ThumbnailImage {
+    StyledImage {
         id: fallbackImage
         anchors.fill: parent
         visible: root.failed
-        sourcePath: root.fallbackPath.length > 0 ? root.fallbackPath : `${FileUtils.trimFileProtocol(Directories.assetsPath)}/images/default_wallpaper.png`
-        generateThumbnail: false
+        source: root.fallbackPath.length > 0 ? root.fallbackPath : `${FileUtils.trimFileProtocol(Directories.assetsPath)}/images/default_wallpaper.png`
         fillMode: Image.PreserveAspectCrop
         cache: true
     }

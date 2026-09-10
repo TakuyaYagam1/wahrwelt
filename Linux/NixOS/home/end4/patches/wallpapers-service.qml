@@ -368,7 +368,16 @@ Singleton {
         }
     }
 
-    Component.onCompleted: root.reconcileVideoBackend()
+    Connections {
+        target: Config
+        function onReadyChanged() {
+            if (Config.ready) Qt.callLater(root.reconcileVideoBackend);
+        }
+    }
+
+    Component.onCompleted: {
+        if (Config.ready) Qt.callLater(root.reconcileVideoBackend);
+    }
 
     function rebuildWallpaperModel() {
         rebuildIndexProc.restartIndex();
@@ -378,16 +387,19 @@ Singleton {
         reconcileVideoProc.reconcile();
     }
 
-    function generateThumbnail(size) {
+    function generateThumbnail(size, directory = root.effectiveDirectory) {
         if (!["normal", "large", "x-large", "xx-large"].includes(size)) throw new Error("Invalid thumbnail size");
-        thumbgenProc.directory = root.effectiveDirectory;
+        const cleanDirectory = root.cleanPath(directory);
+        if (cleanDirectory.length === 0) return;
+        thumbgenProc.running = false;
+        thumbgenProc.directory = cleanDirectory;
         thumbgenProc.command = [
             "bash", "-c",
             "\"$1\" --size \"$2\" --machine_progress -d \"$3\" || true; \"$4\" --size \"$2\" -d \"$3\" || true; \"$5\" --size \"$2\" --directory \"$3\" || true",
             "end4-thumbnail-generation",
             root.thumbgenScriptPath,
             size,
-            root.effectiveDirectory,
+            cleanDirectory,
             root.generateThumbnailsMagickScriptPath,
             root.firstFrameScriptPath
         ];

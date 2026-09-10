@@ -143,6 +143,55 @@ def patch_selector(root: Path) -> None:
         )
     if (root / "ii").is_dir():
         text = replace_once(text, "                        model: Wallpapers.folderModel", "                        model: Wallpapers.wallpaperModel", f"official wallpaper model in {path}")
+    pc_generation = "        Wallpapers.setDirectory(`${Directories.pictures}/Wallpapers`);\n        Qt.callLater(() => Wallpapers.generateThumbnail(thumbnailSizeName));"
+    official_generation = "        Wallpapers.generateThumbnail(thumbnailSizeName);"
+    if text.count(pc_generation) == 1 and text.count(official_generation) == 0:
+        text = text.replace(
+            pc_generation,
+            "        Wallpapers.generateThumbnail(thumbnailSizeName, Wallpapers.effectiveDirectory);",
+            1,
+        )
+        update_function_end = "    }\n\n    function handleFilePasting(event) {"
+        lifecycle = """    }
+
+    Component.onCompleted: Qt.callLater(root.updateThumbnails)
+
+    Connections {
+        target: Wallpapers
+        function onEffectiveDirectoryChanged() {
+            Qt.callLater(() => root.updateThumbnails());
+        }
+    }
+
+    function handleFilePasting(event) {"""
+        text = replace_once(
+            text,
+            update_function_end,
+            lifecycle,
+            f"pC selector thumbnail lifecycle in {path}",
+        )
+    elif text.count(official_generation) == 1 and text.count(pc_generation) == 0:
+        text = text.replace(
+            official_generation,
+            "        Wallpapers.generateThumbnail(thumbnailSizeName, Wallpapers.effectiveDirectory);",
+            1,
+        )
+        official_lifecycle = "    }\n\n    Connections {\n        target: Wallpapers\n        function onDirectoryChanged() {"
+        official_replacement = """    }
+
+    Component.onCompleted: Qt.callLater(root.updateThumbnails)
+
+    Connections {
+        target: Wallpapers
+        function onEffectiveDirectoryChanged() {"""
+        text = replace_once(
+            text,
+            official_lifecycle,
+            official_replacement,
+            f"official selector thumbnail lifecycle in {path}",
+        )
+    else:
+        fail(f"active directory thumbnail generation missing or ambiguous in {path}")
     path.write_text(text)
 
 
