@@ -222,6 +222,11 @@ check_live_wallpaper_contract() {
         exit 1
       fi
     done
+    if [ "$(grep -Fc 'property real z:' "$config")" -ne 13 ] ||
+      ! grep -Fq 'property real z: -1000' "$config"; then
+      printf 'FAIL: End4 Official does not preserve the complete pC desktop widget layer order\n' >&2
+      exit 1
+    fi
   fi
 
   for expected in \

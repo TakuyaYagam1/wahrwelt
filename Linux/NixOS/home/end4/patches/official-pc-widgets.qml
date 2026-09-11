@@ -10,6 +10,7 @@
                         property string placementStrategy: "leastBusy"
                         property real x: 100
                         property real y: 100
+                        property real z: 0
                         property string style: "cookie"
                         property string color: ""
                         property string styleLocked: "cookie"
@@ -54,6 +55,7 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property string sizeMode: "1x3"
                         property bool expanded: false
                     }
@@ -62,6 +64,7 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property string sizeMode: "2x2"
                     }
                     property JsonObject worldClock: JsonObject {
@@ -70,6 +73,7 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property string sizeMode: "2x2"
                         property int clockCount: 4
                     }
@@ -78,18 +82,21 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                     }
                     property JsonObject todo: JsonObject {
                         property bool enable: false
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                     }
                     property JsonObject userCard: JsonObject {
                         property bool enable: false
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property string sizeMode: "1x2"
                     }
                     property JsonObject images: JsonObject {
@@ -97,18 +104,21 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                     }
                     property JsonObject visualizer: JsonObject {
                         property bool enable: false
                         property string placementStrategy: "free"
                         property real x: 0
                         property real y: 0
+                        property real z: -1000
                     }
                     property JsonObject customImage: JsonObject {
                         property bool enable: false
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property string path: ""
                         property string shape: "Cookie4Sided"
                         property real size: 200
@@ -118,6 +128,7 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property bool vertical: false
                     }
                     property JsonObject timers: JsonObject {
@@ -125,6 +136,7 @@
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                        property real z: 0
                         property bool vertical: false
                     }
                     property JsonObject media: JsonObject {
@@ -136,6 +148,7 @@
                         property string placementStrategy: "free"
                         property real x: 800
                         property real y: 500
+                        property real z: 0
                         property string sizeMode: "1x3"
                     }
                 }

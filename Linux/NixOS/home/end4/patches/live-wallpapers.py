@@ -255,15 +255,21 @@ def patch_background(root: Path) -> None:
         fail(f"wallpaper image visibility anchor missing or ambiguous in {path}")
 
     if "property bool videoRevealed:" in text:
-        previous_wallpaper = re.compile(
+        legacy_previous_wallpaper = re.compile(
             r"(?m)^(\s+id: previousWallpaper\b[\s\S]*?^\s+visible:) true$"
         )
-        text, count = previous_wallpaper.subn(
-            r"\1 !bgRoot.videoRevealed",
-            text,
-            count=1,
+        compatible_previous_wallpaper = re.compile(
+            r"(?m)^\s+id: previousWallpaper\b[\s\S]*?^\s+visible: !bgRoot\.videoRevealed$"
         )
-        if count != 1:
+        legacy_count = len(legacy_previous_wallpaper.findall(text))
+        compatible_count = len(compatible_previous_wallpaper.findall(text))
+        if legacy_count == 1 and compatible_count == 0:
+            text = legacy_previous_wallpaper.sub(
+                r"\1 !bgRoot.videoRevealed",
+                text,
+                count=1,
+            )
+        elif legacy_count != 0 or compatible_count != 1:
             fail(f"previous wallpaper video reveal anchor missing or ambiguous in {path}")
     path.write_text(text)
 
