@@ -281,6 +281,41 @@ def patch_appearance(root: Path) -> None:
     path.write_text(text)
 
 
+def qml_property_block(text: str, marker: str, label: str) -> tuple[int, int]:
+    start = text.find(marker)
+    if start < 0 or text.find(marker, start + len(marker)) >= 0:
+        fail(f"{label}: expected exactly one {marker!r}")
+    brace = text.find("{", start + len(marker))
+    if brace < 0:
+        fail(f"{label}: opening brace missing")
+    depth = 0
+    for index in range(brace, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                return start, end
+    fail(f"{label}: closing brace missing")
+
+
+def patch_official_pc_widget_compat(root: Path) -> None:
+    path = root / "ii/modules/common/Config.qml"
+    text = path.read_text()
+    marker = "                property JsonObject widgets: JsonObject {"
+    start, end = qml_property_block(text, marker, f"Official widget schema in {path}")
+    fragment = Path(__file__).resolve().parent / "official-pc-widgets.qml"
+    if not fragment.is_file():
+        fail(f"missing vendored pC widget compatibility schema {fragment}")
+    replacement = fragment.read_text()
+    if not replacement.endswith("\n"):
+        fail(f"pC widget compatibility schema must end with a newline: {fragment}")
+    path.write_text(text[:start] + replacement + text[end:])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=Path)
@@ -298,6 +333,8 @@ def main() -> int:
     patch_directory_item(root)
     patch_background(root)
     patch_appearance(root)
+    if args.variant == "official":
+        patch_official_pc_widget_compat(root)
     return 0
 
 

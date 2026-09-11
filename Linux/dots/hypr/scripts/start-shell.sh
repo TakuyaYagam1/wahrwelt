@@ -739,6 +739,20 @@ ensure_end4_idle() {
   return 1
 }
 
+reconcile_end4_video_backend() {
+  local end4_quickshell_path="$1"
+  local reconcile="$end4_quickshell_path/scripts/wallpapers/video-backend-reconcile.sh"
+
+  if [ ! -x "$reconcile" ]; then
+    log "End4 video backend reconciler missing: $reconcile"
+    return 1
+  fi
+
+  XDG_CONFIG_HOME="$wahrwelt_config_home" \
+    XDG_STATE_HOME="$wahrwelt_state_home" \
+    "$reconcile"
+}
+
 guard_profile_spawn_visible_budget() {
   if wahrwelt_shell_transition_target_spawn_budget_available 1000000; then
     return 0
@@ -819,6 +833,9 @@ start_profile_shell() {
           ILLOGICAL_IMPULSE_DOTFILES_SOURCE="$wahrwelt_config_home" \
           ILLOGICAL_IMPULSE_VIRTUAL_ENV="$wahrwelt_state_home/quickshell/.venv" \
           qs-end4 -n -d -c "$end4_config" || return 1
+        if ! reconcile_end4_video_backend "$end4_quickshell_path"; then
+          log "End4 shell started without restoring the saved video backend; profile=$profile"
+        fi
       else
         log "qs-end4 command not found"
         return 1

@@ -32,6 +32,7 @@ check_live_wallpaper_contract() {
   local selector="$root/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
   local directory_item="$root/modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml"
   local background="$root/modules/ii/background/Background.qml"
+  local config="$root/modules/common/Config.qml"
   local surface="$root/modules/ii/background/LiveWallpaperSurface.qml"
   local switchwall="$root/scripts/colors/switchwall.sh"
   local media_index="$root/scripts/wallpapers/media-index.py"
@@ -199,6 +200,28 @@ check_live_wallpaper_contract() {
     printf 'FAIL: End4 %s previous wallpaper keeps covering the live video layer: %s\n' \
       "$variant" "$background" >&2
     exit 1
+  fi
+
+  if [ "$variant" = Official ]; then
+    for expected in \
+      'End4 pC desktop widget compatibility fields.' \
+      'property JsonObject calendar: JsonObject {' \
+      'property JsonObject worldClock: JsonObject {' \
+      'property JsonObject notes: JsonObject {' \
+      'property JsonObject todo: JsonObject {' \
+      'property JsonObject userCard: JsonObject {' \
+      'property JsonObject images: JsonObject {' \
+      'property JsonObject visualizer: JsonObject {' \
+      'property JsonObject customImage: JsonObject {' \
+      'property JsonObject resources: JsonObject {' \
+      'property JsonObject timers: JsonObject {' \
+      'property JsonObject media: JsonObject {'; do
+      if ! grep -Fq "$expected" "$config"; then
+        printf 'FAIL: End4 Official can erase pC desktop widget state because Config.qml lacks %s\n' \
+          "$expected" >&2
+        exit 1
+      fi
+    done
   fi
 
   for expected in \

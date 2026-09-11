@@ -223,12 +223,22 @@ for marker in \
   'WAHRWELT_QS_CONFIG="$end4_quickshell_path"' \
   'qsConfig="$end4_quickshell_path"' \
   'ILLOGICAL_IMPULSE_DOTFILES_SOURCE="$wahrwelt_config_home"' \
-  'ILLOGICAL_IMPULSE_VIRTUAL_ENV="$wahrwelt_state_home/quickshell/.venv"'; do
+  'ILLOGICAL_IMPULSE_VIRTUAL_ENV="$wahrwelt_state_home/quickshell/.venv"' \
+  'reconcile_end4_video_backend "$end4_quickshell_path"'; do
   if ! grep -Fq -- "$marker" "$start_shell"; then
     printf 'FAIL: start-shell local End4 launch environment missing %s\n' "$marker" >&2
     exit 1
   fi
 done
+
+if ! awk '
+  /start_profile_with_retry "end4 \(\$profile\)"/ { launch = NR }
+  /reconcile_end4_video_backend "\$end4_quickshell_path"/ { reconcile = NR }
+  END { exit !(launch > 0 && reconcile > launch) }
+' "$start_shell"; then
+  printf 'FAIL: End4 startup does not reconcile the saved video after the target process is ready\n' >&2
+  exit 1
+fi
 
 if ! grep -Fq 'ensure_end4_idle || return 1' "$start_shell"; then
   printf 'FAIL: End4 startup does not propagate managed hypridle failure\n' >&2
