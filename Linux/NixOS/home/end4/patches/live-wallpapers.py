@@ -255,6 +255,58 @@ def patch_background(root: Path) -> None:
         fail(f"wallpaper image visibility anchor missing or ambiguous in {path}")
 
     if "property bool videoRevealed:" in text:
+        startup_anchor = """            previousWallpaper.source = bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
+            wallpaper.source = bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
+            bgRoot.currentWallpaperSource = bgRoot.wallpaperPath
+            bgRoot.previousWallpaperSource = ""
+            bgRoot.transitionProgress = 1.0
+"""
+        startup_replacement = """            if (bgRoot.wallpaperIsVideo) {
+                previousWallpaper.source = ""
+                wallpaper.source = ""
+                bgRoot.currentWallpaperSource = ""
+                bgRoot.previousWallpaperSource = ""
+                bgRoot.transitionPending = false
+                bgRoot.transitionProgress = 1.0
+                bgRoot.videoRevealed = true
+                return
+            }
+            previousWallpaper.source = bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
+            wallpaper.source = bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
+            bgRoot.currentWallpaperSource = bgRoot.wallpaperPath
+            bgRoot.previousWallpaperSource = ""
+            bgRoot.transitionProgress = 1.0
+"""
+        text = replace_once(
+            text,
+            startup_anchor,
+            startup_replacement,
+            f"video-safe startup in {path}",
+        )
+
+        wallpaper_change_anchor = """        onWallpaperPathChanged: {
+            bgRoot.videoRevealed = false
+"""
+        wallpaper_change_replacement = """        onWallpaperPathChanged: {
+            if (bgRoot.wallpaperIsVideo) {
+                previousWallpaper.source = ""
+                wallpaper.source = ""
+                bgRoot.currentWallpaperSource = ""
+                bgRoot.previousWallpaperSource = ""
+                bgRoot.transitionPending = false
+                bgRoot.transitionProgress = 1.0
+                bgRoot.videoRevealed = true
+                return
+            }
+            bgRoot.videoRevealed = false
+"""
+        text = replace_once(
+            text,
+            wallpaper_change_anchor,
+            wallpaper_change_replacement,
+            f"video-safe wallpaper change in {path}",
+        )
+
         legacy_previous_wallpaper = re.compile(
             r"(?m)^(\s+id: previousWallpaper\b[\s\S]*?^\s+visible:) true$"
         )

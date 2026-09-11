@@ -202,6 +202,26 @@ check_live_wallpaper_contract() {
     exit 1
   fi
 
+  if grep -Fq 'property bool videoRevealed:' "$background"; then
+    local startup_block wallpaper_change_block
+    startup_block="$(sed -n '/Component.onCompleted: {/,/^        }/p' "$background")"
+    wallpaper_change_block="$(sed -n '/onWallpaperPathChanged: {/,/^        }/p' "$background")"
+
+    for block in "$startup_block" "$wallpaper_change_block"; do
+      for expected in \
+        'if (bgRoot.wallpaperIsVideo)' \
+        'previousWallpaper.source = ""' \
+        'wallpaper.source = ""' \
+        'bgRoot.videoRevealed = true'; do
+        if ! grep -Fq "$expected" <<<"$block"; then
+          printf 'FAIL: End4 %s video startup bypass is missing %s: %s\n' \
+            "$variant" "$expected" "$background" >&2
+          exit 1
+        fi
+      done
+    done
+  fi
+
   if [ "$variant" = Official ]; then
     for expected in \
       'End4 pC desktop widget compatibility fields.' \
