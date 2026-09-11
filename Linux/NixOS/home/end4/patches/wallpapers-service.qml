@@ -340,9 +340,11 @@ Singleton {
     Process {
         id: reconcileVideoProc
 
-        function reconcile() {
+        function reconcile(force = false) {
             reconcileVideoProc.running = false;
-            reconcileVideoProc.command = [root.reconcileVideoScriptPath];
+            reconcileVideoProc.command = force
+                ? [root.reconcileVideoScriptPath, "--force"]
+                : [root.reconcileVideoScriptPath];
             reconcileVideoProc.running = true;
         }
 
@@ -364,7 +366,7 @@ Singleton {
     Connections {
         target: Quickshell
         function onScreensChanged() {
-            root.reconcileVideoBackend();
+            root.reconcileVideoBackend(true);
         }
     }
 
@@ -383,8 +385,8 @@ Singleton {
         rebuildIndexProc.restartIndex();
     }
 
-    function reconcileVideoBackend() {
-        reconcileVideoProc.reconcile();
+    function reconcileVideoBackend(force = false) {
+        reconcileVideoProc.reconcile(force);
     }
 
     function generateThumbnail(size, directory = root.effectiveDirectory) {

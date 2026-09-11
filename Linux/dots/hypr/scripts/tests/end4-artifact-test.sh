@@ -86,7 +86,7 @@ check_live_wallpaper_contract() {
   for expected in \
     'reconcileVideoScriptPath' \
     'reconcileVideoBackend' \
-    'onScreensChanged' \
+    'root.reconcileVideoBackend(true)' \
     'target: Config' \
     'onReadyChanged' \
     'Config.ready' \
@@ -381,7 +381,7 @@ run_end4_media_sort_simulation() {
 run_end4_video_backend_simulation() {
   local reconcile="$1"
   local switchwall="$2"
-  local fixture fakebin config_home runtime_dir restore_script generated_switchwall log monitors marker dangerous_video
+  local fixture fakebin config_home runtime_dir restore_script generated_switchwall log monitors marker scope_active dangerous_video
   fixture="$(mktemp -d)"
   fakebin="$fixture/bin"
   config_home="$fixture/config"
@@ -391,6 +391,7 @@ run_end4_video_backend_simulation() {
   log="$fixture/backend.log"
   monitors="$fixture/monitors.json"
   marker="$fixture/command-substitution-ran"
+  scope_active="$fixture/video-scope-active"
   dangerous_video="$fixture/space and 'single' \"double\" \$(touch \"\$END4_TEST_MARKER\"); echo injected.mp4"
   mkdir -p "$fakebin" "$runtime_dir" "$(dirname "$restore_script")" "$config_home/illogical-impulse"
   : >"$dangerous_video"
@@ -408,6 +409,7 @@ run_end4_video_backend_simulation() {
   # shellcheck disable=SC2016
   printf '%s\n' "#!${BASH}" \
     'printf "systemd-run:%s\n" "$*" >>"$END4_TEST_LOG"' \
+    ': >"$END4_TEST_SCOPE_ACTIVE"' \
     'while [ "$#" -gt 0 ]; do' \
     '  case "$1" in' \
     '    --user|--scope|--quiet|--collect|--) shift ;;' \
@@ -418,12 +420,20 @@ run_end4_video_backend_simulation() {
     '"$@"' >"$fakebin/systemd-run"
   # shellcheck disable=SC2016
   printf '%s\n' "#!${BASH}" \
+    'while [ "${1:-}" = --user ]; do shift; done' \
+    'case "${1:-}" in' \
+    '  is-active) [ -e "$END4_TEST_SCOPE_ACTIVE" ] ;;' \
+    '  stop) rm -f -- "$END4_TEST_SCOPE_ACTIVE" ;;' \
+    '  *) exit 1 ;;' \
+    'esac' >"$fakebin/systemctl"
+  # shellcheck disable=SC2016
+  printf '%s\n' "#!${BASH}" \
     'printf "setsid:%s\n" "$*" >>"$END4_TEST_LOG"' \
     'if [ "${1:-}" = --fork ]; then shift; fi' \
     '"$@"' >"$fakebin/setsid"
   cp "$switchwall" "$generated_switchwall"
   chmod 0755 "$fakebin/pkill" "$fakebin/hyprctl" "$fakebin/mpvpaper" "$fakebin/sleep" \
-    "$fakebin/systemd-run" "$fakebin/setsid" "$generated_switchwall"
+    "$fakebin/systemd-run" "$fakebin/systemctl" "$fakebin/setsid" "$generated_switchwall"
   sed -i 's/^main "\$@"/# main "\$@"/' "$generated_switchwall"
   # shellcheck disable=SC2016
   XDG_CONFIG_HOME="$config_home" HOME="$fixture/home" "$BASH" -c \
@@ -435,9 +445,9 @@ run_end4_video_backend_simulation() {
     exit 1
   fi
 
-  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" "$reconcile"
+  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" END4_TEST_SCOPE_ACTIVE="$scope_active" "$reconcile"
   if [ -e "$marker" ] ||
-    ! grep -Fq 'systemd-run:--user --scope --quiet --collect --unit=wahrwelt-video-wallpaper-' "$log" ||
+    ! grep -Fq 'systemd-run:--user --scope --quiet --collect --unit=wahrwelt-video-wallpaper' "$log" ||
     ! grep -Fq 'setsid:--fork' "$log" ||
     ! grep -Fq 'mpvpaper:-o no-audio loop' "$log" ||
     ! grep -Fq "$dangerous_video" "$log"; then
@@ -445,8 +455,19 @@ run_end4_video_backend_simulation() {
     printf 'FAIL: End4 restore is not isolated from the shell-switch process lifetime\n' >&2
     exit 1
   fi
+  before_mpvpaper="$(grep -Fc 'mpvpaper:' "$log" || true)"
+  before_pkill="$(grep -Fc 'pkill:' "$log" || true)"
+  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" END4_TEST_SCOPE_ACTIVE="$scope_active" "$reconcile"
+  after_mpvpaper="$(grep -Fc 'mpvpaper:' "$log" || true)"
+  after_pkill="$(grep -Fc 'pkill:' "$log" || true)"
+  if [ "$after_mpvpaper" -ne "$before_mpvpaper" ] ||
+    [ "$after_pkill" -ne "$before_pkill" ]; then
+    rm -rf -- "$fixture"
+    printf 'FAIL: duplicate End4 startup reconciliation restarted the active video backend\n' >&2
+    exit 1
+  fi
   printf '%s\n' '[{"name":"eDP-1"},{"name":"HDMI-A-1"}]' >"$monitors"
-  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" "$reconcile"
+  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" END4_TEST_SCOPE_ACTIVE="$scope_active" "$reconcile" --force
   if [ "$(grep -Fc 'mpvpaper:-o no-audio loop' "$log")" -lt 2 ] ||
     [ "$(grep -Fc 'eDP-1' "$log")" -lt 2 ] ||
     [ "$(grep -Fc 'HDMI-A-1' "$log")" -lt 1 ]; then
@@ -459,7 +480,7 @@ run_end4_video_backend_simulation() {
     >"$config_home/illogical-impulse/config.json"
   before_mpvpaper="$(grep -Fc 'mpvpaper:' "$log" || true)"
   before_pkill="$(grep -Fc 'pkill:' "$log" || true)"
-  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" "$reconcile"
+  PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" END4_TEST_SCOPE_ACTIVE="$scope_active" "$reconcile"
   after_mpvpaper="$(grep -Fc 'mpvpaper:' "$log" || true)"
   after_pkill="$(grep -Fc 'pkill:' "$log" || true)"
   if [ "$after_mpvpaper" -ne "$before_mpvpaper" ] ||

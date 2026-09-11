@@ -8,6 +8,22 @@ config_file="$config_home/illogical-impulse/config.json"
 restore_script="$config_home/hypr/custom/scripts/__restore_video_wallpaper.sh"
 runtime_dir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 lock_dir="$runtime_dir/end4-video-backend-reconcile.lock"
+scope_name="wahrwelt-video-wallpaper"
+scope_unit="$scope_name.scope"
+force=0
+
+case "${1:-}" in
+  "") ;;
+  --force) force=1 ;;
+  *)
+    printf 'usage: %s [--force]\n' "$0" >&2
+    exit 64
+    ;;
+esac
+[ "$#" -le 1 ] || {
+  printf 'usage: %s [--force]\n' "$0" >&2
+  exit 64
+}
 
 if ! mkdir "$lock_dir" 2>/dev/null; then
   if [ -r "$lock_dir/pid" ] && ! kill -0 "$(<"$lock_dir/pid")" 2>/dev/null; then
@@ -26,6 +42,9 @@ cleanup_lock() {
 trap cleanup_lock EXIT
 
 kill_existing_video_backend() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user stop "$scope_unit" >/dev/null 2>&1 || true
+  fi
   if command -v pkill >/dev/null 2>&1; then
     pkill -f -9 mpvpaper || true
   fi
@@ -43,8 +62,15 @@ case "${wallpaper,,}" in
       exit 0
     }
     if [ -x "$restore_script" ]; then
-      if command -v systemd-run >/dev/null 2>&1 && command -v setsid >/dev/null 2>&1; then
-        scope_name="wahrwelt-video-wallpaper-${BASHPID:-$$}"
+      if command -v systemd-run >/dev/null 2>&1 &&
+        command -v systemctl >/dev/null 2>&1 &&
+        command -v setsid >/dev/null 2>&1; then
+        if [ "$force" -eq 0 ] && systemctl --user is-active --quiet "$scope_unit"; then
+          exit 0
+        fi
+        if [ "$force" -eq 1 ]; then
+          systemctl --user stop "$scope_unit" >/dev/null 2>&1 || true
+        fi
         systemd-run --user --scope --quiet --collect --unit="$scope_name" \
           setsid --fork "${BASH:-bash}" "$restore_script" </dev/null >/dev/null 2>&1
       else
