@@ -227,6 +227,17 @@ check_live_wallpaper_contract() {
       printf 'FAIL: End4 Official does not preserve the complete pC desktop widget layer order\n' >&2
       exit 1
     fi
+    if ! python3 - "$config" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text()
+raise SystemExit(0 if text.count("{") == text.count("}") else 1)
+PY
+    then
+      printf 'FAIL: End4 Official widget compatibility replacement produced unbalanced Config.qml braces\n' >&2
+      exit 1
+    fi
   fi
 
   for expected in \
@@ -394,8 +405,25 @@ run_end4_video_backend_simulation() {
   printf '%s\n' "#!${BASH}" 'printf "mpvpaper:%s\n" "$*" >>"$END4_TEST_LOG"' >"$fakebin/mpvpaper"
   # shellcheck disable=SC2016
   printf '%s\n' "#!${BASH}" 'exit 0' >"$fakebin/sleep"
+  # shellcheck disable=SC2016
+  printf '%s\n' "#!${BASH}" \
+    'printf "systemd-run:%s\n" "$*" >>"$END4_TEST_LOG"' \
+    'while [ "$#" -gt 0 ]; do' \
+    '  case "$1" in' \
+    '    --user|--scope|--quiet|--collect|--) shift ;;' \
+    '    --unit=*) shift ;;' \
+    '    *) break ;;' \
+    '  esac' \
+    'done' \
+    '"$@"' >"$fakebin/systemd-run"
+  # shellcheck disable=SC2016
+  printf '%s\n' "#!${BASH}" \
+    'printf "setsid:%s\n" "$*" >>"$END4_TEST_LOG"' \
+    'if [ "${1:-}" = --fork ]; then shift; fi' \
+    '"$@"' >"$fakebin/setsid"
   cp "$switchwall" "$generated_switchwall"
-  chmod 0755 "$fakebin/pkill" "$fakebin/hyprctl" "$fakebin/mpvpaper" "$fakebin/sleep" "$generated_switchwall"
+  chmod 0755 "$fakebin/pkill" "$fakebin/hyprctl" "$fakebin/mpvpaper" "$fakebin/sleep" \
+    "$fakebin/systemd-run" "$fakebin/setsid" "$generated_switchwall"
   sed -i 's/^main "\$@"/# main "\$@"/' "$generated_switchwall"
   # shellcheck disable=SC2016
   XDG_CONFIG_HOME="$config_home" HOME="$fixture/home" "$BASH" -c \
@@ -408,9 +436,13 @@ run_end4_video_backend_simulation() {
   fi
 
   PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" "$reconcile"
-  if [ -e "$marker" ] || ! grep -Fq 'mpvpaper:-o no-audio loop' "$log" || ! grep -Fq "$dangerous_video" "$log"; then
+  if [ -e "$marker" ] ||
+    ! grep -Fq 'systemd-run:--user --scope --quiet --collect --unit=wahrwelt-video-wallpaper-' "$log" ||
+    ! grep -Fq 'setsid:--fork' "$log" ||
+    ! grep -Fq 'mpvpaper:-o no-audio loop' "$log" ||
+    ! grep -Fq "$dangerous_video" "$log"; then
     rm -rf -- "$fixture"
-    printf 'FAIL: End4 generated restore script executed or lost a quoted video path\n' >&2
+    printf 'FAIL: End4 restore is not isolated from the shell-switch process lifetime\n' >&2
     exit 1
   fi
   printf '%s\n' '[{"name":"eDP-1"},{"name":"HDMI-A-1"}]' >"$monitors"

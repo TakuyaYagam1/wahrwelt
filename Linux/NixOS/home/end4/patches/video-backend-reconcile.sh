@@ -43,7 +43,13 @@ case "${wallpaper,,}" in
       exit 0
     }
     if [ -x "$restore_script" ]; then
-      "${BASH:-bash}" "$restore_script"
+      if command -v systemd-run >/dev/null 2>&1 && command -v setsid >/dev/null 2>&1; then
+        scope_name="wahrwelt-video-wallpaper-${BASHPID:-$$}"
+        systemd-run --user --scope --quiet --collect --unit="$scope_name" \
+          setsid --fork "${BASH:-bash}" "$restore_script" </dev/null >/dev/null 2>&1
+      else
+        "${BASH:-bash}" "$restore_script" </dev/null >/dev/null 2>&1
+      fi
     else
       kill_existing_video_backend
     fi

@@ -291,7 +291,8 @@ def qml_property_block(text: str, marker: str, label: str) -> tuple[int, int]:
     start = text.find(marker)
     if start < 0 or text.find(marker, start + len(marker)) >= 0:
         fail(f"{label}: expected exactly one {marker!r}")
-    brace = text.find("{", start + len(marker))
+    marker_brace = marker.rfind("{")
+    brace = start + marker_brace if marker_brace >= 0 else text.find("{", start + len(marker))
     if brace < 0:
         fail(f"{label}: opening brace missing")
     depth = 0
