@@ -47,7 +47,7 @@ buildNpmPackage' rec {
     libsecret
     vips
   ]
-  ++ lib.optionals stdenv.isLinux [
+  ++ lib.optionals stdenv.hostPlatform.isLinux [
     libx11
   ];
 

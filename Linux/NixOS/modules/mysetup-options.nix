@@ -98,7 +98,6 @@ let
             omnirouter = boolOption false;
             portainer = boolOption false;
             observability = boolOption false;
-            firefoxLegacy = boolOption false;
           };
         };
       };

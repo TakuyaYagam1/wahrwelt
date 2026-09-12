@@ -294,13 +294,18 @@ require_text "$nixos_dir/services/grafana-secret-key.py" 'AT_EMPTY_PATH' \
     "Grafana secret does not use atomic no-clobber publication"
 require_text "$nixos_dir/services/grafana-secret-key.py" 'os.O_NOFOLLOW' \
     "Grafana secret helper can follow a symlink collision"
-reject_text "$nixos_dir/lib/package-sets/home.nix" 'firefox-legacy' \
-    "legacy Firefox is still part of the personal package preset"
-require_text "$nixos_dir/home/programs/packages.nix" 'wahrwelt.features.firefoxLegacy' \
-    "legacy Firefox has no explicit opt-in feature gate"
-require_text "$nixos_dir/profiles/features.nix" \
-    '!config.wahrwelt.features.firefoxLegacy || config.wahrwelt.features.ctfTools' \
-    "legacy Firefox opt-in is not restricted to an explicit CTF/lab host"
+reject_text "$nixos_dir" 'firefox-legacy' \
+    "legacy Firefox remains in the Wahrwelt NixOS source tree"
+reject_text "$nixos_dir" 'firefoxLegacy' \
+    "legacy Firefox feature gate remains in the Wahrwelt NixOS source tree"
+reject_text "$nixos_dir/home/programs/fish.nix" 'chrome-922' \
+    "legacy Chrome MCP launchers remain in Fish"
+reject_text "$nixos_dir/lib/package-sets" 'google-chrome' \
+    "Google Chrome remains in a Wahrwelt package set"
+reject_text "$nixos_dir/lib/package-sets/home.nix" 'chromium' \
+    "Chromium remains in the home package set"
+reject_text "$nixos_dir/lib/package-sets/ctf/misc.nix" 'chromium' \
+    "Chromium remains in the CTF package set"
 reject_text "$nixos_dir/services/portainer.nix" '@sha256:' \
     "Portainer image uses a digest suffix that the version-only updater does not manage"
 portainer_image="$(sed -nE \
@@ -434,7 +439,6 @@ nix eval --no-write-lock-file --impure --json --expr '
     enabledVars = defaults // {
       features = defaults.features // {
         ctfTools = true;
-        firefoxLegacy = true;
         observability = true;
         portainer = true;
       };
@@ -458,9 +462,6 @@ nix eval --no-write-lock-file --impure --json --expr '
         }
       ];
     }).config;
-    packageName = package: package.pname or (package.name or "");
-    defaultHomePackages = base.home-manager.users.${username}.home.packages;
-    enabledHomePackages = enabled.home-manager.users.${username}.home.packages;
   in {
     passwordFileDefault = base.users.users.${username}.hashedPasswordFile;
     passwordFileEnabled = passwordHost.config.users.users.${username}.hashedPasswordFile;
@@ -475,8 +476,6 @@ nix eval --no-write-lock-file --impure --json --expr '
     nodeExporter = enabled.services.prometheus.exporters.node.listenAddress;
     lokiHttp = enabled.services.loki.configuration.server.http_listen_address;
     lokiGrpc = enabled.services.loki.configuration.server.grpc_listen_address;
-    legacyFirefoxDefault = builtins.any (package: packageName package == "firefox-legacy") defaultHomePackages;
-    legacyFirefoxOptIn = builtins.any (package: packageName package == "firefox-legacy") enabledHomePackages;
     portainerImage = enabled.virtualisation.oci-containers.containers.portainer.image;
     defaultDocker = base.virtualisation.docker.enable;
     defaultPodmanCompat = base.virtualisation.podman.dockerCompat;
@@ -510,8 +509,6 @@ if ! jq -e --arg expected_portainer_image "$portainer_image" '
   .nodeExporter == "127.0.0.1" and
   .lokiHttp == "127.0.0.1" and
   .lokiGrpc == "127.0.0.1" and
-  .legacyFirefoxDefault == false and
-  .legacyFirefoxOptIn == true and
   .portainerImage == $expected_portainer_image and
   .defaultDocker == false and
   .defaultPodmanCompat == true and

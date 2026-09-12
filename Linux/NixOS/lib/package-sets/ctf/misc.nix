@@ -17,7 +17,6 @@ with pkgs-stable;
   bat
   cabextract
   cherrytree
-  chromium
   cryptsetup
   curl
   cyberchef

@@ -441,10 +441,8 @@ func TestThinTemplatesExposeSystemAndHomeOverrides(t *testing.T) {
 	if !strings.Contains(ConfigurationNix(), "./user") {
 		t.Fatalf("configuration.nix template must import user defaults\n%s", ConfigurationNix())
 	}
-	for _, want := range []string{"./ida-pro.nix", "./ida-mcp.nix", "./ida-plugins.nix"} {
-		if !strings.Contains(UserDefaultNix(), want) {
-			t.Fatalf("user/default.nix template missing %q\n%s", want, UserDefaultNix())
-		}
+	if !strings.Contains(UserDefaultNix(), "./custom.nix") {
+		t.Fatalf("user/default.nix template must expose a generic local module import\n%s", UserDefaultNix())
 	}
 	if !strings.Contains(HomeNix(), "home.packages") {
 		t.Fatalf("home.nix template must expose home packages\n%s", HomeNix())
@@ -848,8 +846,8 @@ func TestStageThinConfigurationWritesWrapperAndTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(privateDefault), "./ida-pro.nix") {
-		t.Fatalf("thin staging user/default.nix missing IDA example imports\n%s", privateDefault)
+	if !strings.Contains(string(privateDefault), "./custom.nix") {
+		t.Fatalf("thin staging user/default.nix missing generic local module example\n%s", privateDefault)
 	}
 	for _, rel := range []string{"flake.lock", "dots", "installer", "hosts/NixOS/host-vars.nix"} {
 		if _, err := os.Stat(filepath.Join(staging, rel)); !os.IsNotExist(err) {
@@ -867,8 +865,8 @@ func TestPrepareThinHostLocalPreservesOverridesLockAndSecrets(t *testing.T) {
 		filepath.Join(dest, "flake.lock"):                 "existing-lock\n",
 		filepath.Join(dest, "configuration.nix"):          "{ config, ... }: { }\n",
 		filepath.Join(dest, "home.nix"):                   "{ pkgs, ... }: { }\n",
-		filepath.Join(dest, "private", "ida-pro.nix"):     "{ pkgs, ... }: { }\n",
-		filepath.Join(dest, "private", "ida.run"):         "binary payload\n",
+		filepath.Join(dest, "private", "custom.nix"):      "{ pkgs, ... }: { }\n",
+		filepath.Join(dest, "private", "payload.bin"):     "binary payload\n",
 		filepath.Join(dest, "secrets", "secrets.yaml"):    testEncryptedSecretsYAML,
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -890,8 +888,8 @@ func TestPrepareThinHostLocalPreservesOverridesLockAndSecrets(t *testing.T) {
 		filepath.Join(staging, "configuration.nix"):          "{ config, ... }: { }\n",
 		filepath.Join(staging, "home.nix"):                   "{ pkgs, ... }: { }\n",
 		filepath.Join(staging, "user", "default.nix"):        UserDefaultNix(),
-		filepath.Join(staging, "user", "ida-pro.nix"):        "{ pkgs, ... }: { }\n",
-		filepath.Join(staging, "user", "ida.run"):            "binary payload\n",
+		filepath.Join(staging, "user", "custom.nix"):         "{ pkgs, ... }: { }\n",
+		filepath.Join(staging, "user", "payload.bin"):        "binary payload\n",
 		filepath.Join(staging, "secrets", "secrets.yaml"):    testEncryptedSecretsYAML,
 	} {
 		data, err := os.ReadFile(path)

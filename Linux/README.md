@@ -234,10 +234,6 @@ breakdown is in the [root README](../README.md#package-presets); in short:
 - `personal`: `developer` plus the full private-workstation load - extra apps,
   IDEs, additional AI tools, and games. This is the heaviest build.
 
-Firefox 102 ESR is not part of any preset. Enable
-`wahrwelt.features.firefoxLegacy = true` only in an explicit lab or CTF host
-module when an old-browser target requires it.
-
 Steam does not open Remote Play, dedicated-server, or local-transfer firewall
 ports automatically. Opt in to only the ports required by the current host.
 
@@ -589,8 +585,7 @@ Add NixOS packages, services, and system overrides to `configuration.nix`.
 Add user packages and Home Manager overrides to `home.nix`.
 Use `user/` for explicit local imports that must not live in the public
 repository. Fresh installs import `./user` from `configuration.nix`; add local
-modules to `user/default.nix`, which includes commented examples for
-`ida-pro.nix`, `ida-mcp.nix`, and `ida-plugins.nix`.
+modules to `user/default.nix`.
 
 On the first successful update of an existing installation, either a Wahrwelt
 apply or the one-shot service activated by the ordinary `nixos-update` flow

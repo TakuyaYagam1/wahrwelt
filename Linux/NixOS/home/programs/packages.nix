@@ -27,8 +27,5 @@ in
     (lib.mkIf (wahrweltLib.presets.personal wahrwelt) {
       home.packages = home.personal ++ home.games;
     })
-    (lib.mkIf wahrwelt.features.firefoxLegacy {
-      home.packages = [ pkgs.firefox-legacy ];
-    })
   ];
 }

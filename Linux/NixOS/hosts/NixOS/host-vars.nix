@@ -44,7 +44,6 @@
     omnirouter = false;
     portainer = false;
     observability = false;
-    firefoxLegacy = false;
   };
 
   nix = {

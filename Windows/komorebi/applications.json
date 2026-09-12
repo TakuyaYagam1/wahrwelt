@@ -1087,56 +1087,6 @@
       ]
     ]
   },
-  "IDA": {
-    "tray_and_multi_window": [
-      {
-        "kind": "Exe",
-        "id": "ida.exe",
-        "matching_strategy": "Equals"
-      },
-      {
-        "kind": "Exe",
-        "id": "ida64.exe",
-        "matching_strategy": "Equals"
-      }
-    ],
-    "floating": [
-      [
-        {
-          "kind": "Exe",
-          "id": "ida.exe",
-          "matching_strategy": "Equals"
-        },
-        {
-          "kind": "Title",
-          "id": "IDA -",
-          "matching_strategy": "DoesNotStartWith"
-        },
-        {
-          "kind": "Title",
-          "id": "IDA v",
-          "matching_strategy": "DoesNotStartWith"
-        }
-      ],
-      [
-        {
-          "kind": "Exe",
-          "id": "ida64.exe",
-          "matching_strategy": "Equals"
-        },
-        {
-          "kind": "Title",
-          "id": "IDA -",
-          "matching_strategy": "DoesNotStartWith"
-        },
-        {
-          "kind": "Title",
-          "id": "IDA v",
-          "matching_strategy": "DoesNotStartWith"
-        }
-      ]
-    ]
-  },
   "IntelliJ IDEA": {
     "ignore": [
       {

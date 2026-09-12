@@ -30,8 +30,6 @@
   ];
   personal = with pkgs; [
     happ
-    google-chrome
-    chromium
     wpsoffice
     onlyoffice-desktopeditors
     anytype

@@ -1,13 +1,5 @@
-# keep local-only IDA modules and installer files outside the public repo
-#
-# Setup after nixos-rebuild switch:
-#   1. copy 4 files in /etc/nixos/user: 3 idas and 1 gen
-#   2. nix-store --add-fixed sha256 ~/wahrwelt/Linux/NixOS/ida/ida-pro_94_x64linux.run
-#   2.1 nix hash file ~/wahrwelt/Linux/NixOS/packages/ida-pro_94_x64linux.run
-#   2.2 update hash in ida-pro.nix
-#   3. nixos-update
+# Keep host-local Nix modules under /etc/nixos/user, outside this repository.
 
-ida*
 .codex
 .claude
 .cursor/

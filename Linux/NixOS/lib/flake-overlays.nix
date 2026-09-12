@@ -27,7 +27,6 @@ let
     let
       corePackages = {
         neovim = inputs.neovim-nightly-overlay.packages.${system}.default;
-        firefox-legacy = prev.callPackage ../pkgs/firefox-legacy.nix { };
       };
       desktopPackages =
         if desktopOrMore then

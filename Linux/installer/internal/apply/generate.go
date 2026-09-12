@@ -52,15 +52,13 @@ func ConfigurationNix() string {
 
 func UserDefaultNix() string {
 	return `# Host-local user NixOS modules. This file is preserved by Wahrwelt.
-# Put local-only modules and payloads in this directory, then uncomment or add
-# explicit imports below.
+# Put local-only modules and payloads in this directory, then add explicit
+# imports below.
 { ... }:
 
 {
   imports = [
-    # ./ida-pro.nix
-    # ./ida-mcp.nix
-    # ./ida-plugins.nix
+    # ./custom.nix
   ];
 }
 `

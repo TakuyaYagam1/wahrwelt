@@ -1,40 +1,5 @@
-{
-  lib,
-  wahrwelt,
-  wahrweltLib,
-  ...
-}:
+{ ... }:
 
-let
-  personal = wahrweltLib.presets.personal wahrwelt;
-  # On-demand launchers for the chrome-devtools MCP server. The debug port is a
-  # live credential (full control of the profile's cookies/sessions), so these are
-  # NOT auto-started: the port only exists while the window is open. Their
-  # deliberately separate ports and profiles let two MCP servers run without
-  # a port or profile-lock collision. CHROME_DEBUG_PORT can still override either
-  # port for an externally pinned MCP. The port binds to loopback by default;
-  # never add --remote-debugging-address. Google Chrome keeps these debug
-  # sessions consistent with the installed browser.
-  personalDebugFunctions = {
-    chrome-9222 = ''
-      set -l port 9222
-      set -q CHROME_DEBUG_PORT; and set port $CHROME_DEBUG_PORT
-      google-chrome-stable \
-          --remote-debugging-port=$port \
-          --user-data-dir="$HOME/.chromium-debug-9222-profile" \
-          $argv
-    '';
-
-    chrome-9223 = ''
-      set -l port 9223
-      set -q CHROME_DEBUG_PORT; and set port $CHROME_DEBUG_PORT
-      google-chrome-stable \
-          --remote-debugging-port=$port \
-          --user-data-dir="$HOME/.chromium-debug-9223-profile" \
-          $argv
-    '';
-  };
-in
 {
   programs.fish = {
     enable = true;
@@ -196,7 +161,6 @@ in
         set pass $argv[3]
         /run/wrappers/bin/sudo nmcli dev wifi connect "$ssid" password "$pass"
       '';
-    }
-    // lib.optionalAttrs personal personalDebugFunctions;
+    };
   };
 }
