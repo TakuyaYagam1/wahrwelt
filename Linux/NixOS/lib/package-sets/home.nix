@@ -44,7 +44,7 @@
     zed-editor-fhs
     qtcreator
     antigravity-ide
-    gemini-cli
+    antigravity-cli
     ollama
     opencode
     opencode-claude-auth

@@ -1,4 +1,4 @@
-{ pkgs-stable }:
+{ pkgs, pkgs-stable }:
 
 let
   # Upstream 25.5.26 currently fails its own filesystem handler pytest cases
@@ -24,7 +24,7 @@ with pkgs-stable;
   fd
   fq
   fzf
-  gemini-cli
+  pkgs.antigravity-cli
   git
   gron
   gtkhash

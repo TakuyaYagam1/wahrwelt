@@ -20,7 +20,7 @@ let
     inherit pkgs-stable;
   };
   ctfSets = import ./package-sets/ctf.nix {
-    inherit pkgs-stable inputs system;
+    inherit pkgs pkgs-stable inputs system;
   };
 in
 {

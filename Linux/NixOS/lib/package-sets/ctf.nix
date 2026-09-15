@@ -1,4 +1,5 @@
 {
+  pkgs,
   pkgs-stable,
   inputs ? null,
   system ? pkgs-stable.stdenv.hostPlatform.system,
@@ -12,7 +13,7 @@ in
   ctfCrypto = importCategory "crypto";
   ctfForensics = importCategory "forensics";
   ctfHardware = importCategory "hardware";
-  ctfMisc = importCategory "misc";
+  ctfMisc = import ./ctf/misc.nix { inherit pkgs pkgs-stable; };
   ctfMobile = importCategory "mobile";
   ctfNetwork = importCategory "network";
   ctfOsint = importCategory "osint";
