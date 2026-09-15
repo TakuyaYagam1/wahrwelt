@@ -18,7 +18,7 @@ in
   programs = {
     amnezia-vpn = lib.mkIf personal {
       enable = true;
-      package = pkgs-stable.amnezia-vpn;
+      package = pkgs.amnezia-vpn;
     };
 
     dconf.enable = true;
