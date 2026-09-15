@@ -4,8 +4,7 @@
   # Keep this literal for Nix flake input discovery. The canonical definitions
   # live in ../../lib/preset-inputs.nix and are checked for drift.
   inputs = {
-    # Temporary compatibility pin: avoid Hyprland 0.56.1 Glaze packaging failure.
-    nixpkgs.url = "github:NixOS/nixpkgs?rev=643809054d65fdd466a63e3155b8c498cb483c04";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
     home-manager = {
       url = "github:nix-community/home-manager";

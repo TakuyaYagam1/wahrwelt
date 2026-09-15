@@ -2,8 +2,7 @@
   description = "Reusable Wahrwelt shell modules and installer entrypoint";
 
   inputs = {
-    # Temporary compatibility pin: avoid Hyprland 0.56.1 Glaze packaging failure.
-    nixpkgs.url = "github:NixOS/nixpkgs?rev=643809054d65fdd466a63e3155b8c498cb483c04";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
