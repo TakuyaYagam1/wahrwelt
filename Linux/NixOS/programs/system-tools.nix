@@ -3,7 +3,6 @@
   lib,
   wahrweltLib,
   pkgs,
-  pkgs-stable ? pkgs,
   ...
 }:
 
