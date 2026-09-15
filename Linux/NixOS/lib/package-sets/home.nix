@@ -15,7 +15,7 @@
     spotify
     telegram-desktop
     vesktop
-    libreoffice-qt6-fresh
+    libreoffice-qt-stable
     zathura
     loupe
     mpv
