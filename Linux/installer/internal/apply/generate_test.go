@@ -121,7 +121,7 @@ func TestFlakeNixUsesIndependentThinWahrweltWrapper(t *testing.T) {
 	}
 	for _, want := range []string{
 		`# lock mode: independent`,
-		`nixpkgs.url = "github:NixOS/nixpkgs?rev=643809054d65fdd466a63e3155b8c498cb483c04";`,
+		`nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";`,
 		`url = "github:nix-community/neovim-nightly-overlay";`,
 		`home-manager = {`,
 		`nix-index-database = {`,
@@ -185,7 +185,7 @@ func TestFlakeNixSupportsManagedThinWahrweltWrapper(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		`inputs.nixpkgs.follows = "nixpkgs";`,
-		`nixpkgs.url = "github:NixOS/nixpkgs?rev=643809054d65fdd466a63e3155b8c498cb483c04";`,
+		`nixpkgs.url =`,
 		`url = "github:nix-community/neovim-nightly-overlay";`,
 	} {
 		if strings.Contains(out, forbidden) {
@@ -334,7 +334,7 @@ func TestFlakeNixScopesHostOwnedInputsByPreset(t *testing.T) {
 				}
 			}
 			for _, want := range []string{
-				`nixpkgs.url = "github:NixOS/nixpkgs?rev=643809054d65fdd466a63e3155b8c498cb483c04";`,
+				`nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";`,
 				`home-manager = {`,
 				`neovim-nightly-overlay = {`,
 				`url = "github:nix-community/neovim-nightly-overlay";`,
