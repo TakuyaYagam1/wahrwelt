@@ -318,7 +318,7 @@ check_live_wallpaper_contract() {
 
     for block in "$startup_block" "$wallpaper_change_block"; do
       for expected in \
-        'if (bgRoot.wallpaperIsVideo)' \
+        'if (Wallpapers.isVideoPath(bgRoot.wallpaperSourcePath))' \
         'previousWallpaper.source = ""' \
         'wallpaper.source = ""' \
         'bgRoot.videoRevealed = true'; do

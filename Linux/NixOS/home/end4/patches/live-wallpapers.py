@@ -261,7 +261,7 @@ def patch_background(root: Path) -> None:
             bgRoot.previousWallpaperSource = ""
             bgRoot.transitionProgress = 1.0
 """
-        startup_replacement = """            if (bgRoot.wallpaperIsVideo) {
+        startup_replacement = """            if (Wallpapers.isVideoPath(bgRoot.wallpaperSourcePath)) {
                 previousWallpaper.source = ""
                 wallpaper.source = ""
                 bgRoot.currentWallpaperSource = ""
@@ -288,7 +288,7 @@ def patch_background(root: Path) -> None:
             bgRoot.videoRevealed = false
 """
         wallpaper_change_replacement = """        onWallpaperPathChanged: {
-            if (bgRoot.wallpaperIsVideo) {
+            if (Wallpapers.isVideoPath(bgRoot.wallpaperSourcePath)) {
                 previousWallpaper.source = ""
                 wallpaper.source = ""
                 bgRoot.currentWallpaperSource = ""
