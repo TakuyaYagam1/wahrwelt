@@ -45,14 +45,14 @@ let
 
     general {
         lock_cmd = $lock_cmd
-        before_sleep_cmd = loginctl lock-session
+        before_sleep_cmd = $lock_cmd
         after_sleep_cmd = hyprctl dispatch global quickshell:lockFocus
         inhibit_sleep = 3
     }
 
     listener {
         timeout = ${toString settings.idle.lockTimeout}
-        on-timeout = loginctl lock-session
+        on-timeout = $lock_cmd
     }
 
     listener {
@@ -122,6 +122,14 @@ let
 
   managedSettingsApp = pkgs.writeText "end4-managed-settings-app.lua" ''
     settingsApp = "wahrwelt-end4-settings"
+  '';
+
+  upstreamLockBinding = pkgs.writeText "end4-upstream-lock-binding.lua" ''
+    hl.bind("SUPER + L", hl.dsp.exec_cmd("loginctl lock-session"), { description = "Session: Lock" })
+  '';
+
+  managedLockBinding = pkgs.writeText "end4-managed-lock-binding.lua" ''
+    hl.bind("SUPER + L", hl.dsp.exec_cmd(${luaString "${config.xdg.configHome}/hypr/scripts/lock-active.sh"}), { description = "Session: Lock" })
   '';
 
   end4SettingsLauncher = pkgs.writeShellApplication {
@@ -215,6 +223,10 @@ let
           ${upstreamSettingsApp} \
           ${managedSettingsApp} \
           'Wahrwelt owns End4 native settings lifecycle'
+        strict_replace_line_from_files "$out/hyprland/keybinds.lua" \
+          ${upstreamLockBinding} \
+          ${managedLockBinding} \
+          'Wahrwelt owns End4 native lock routing'
 
         install -m 0555 \
           ${end4SettingsLauncher}/bin/wahrwelt-end4-settings \
@@ -314,6 +326,15 @@ let
         fi
         if ! grep -Fq '/hypr/scripts/lock-active.sh' "$out/hypridle.conf"; then
           echo "validated End4 artifact is missing the managed lock helper" >&2
+          exit 1
+        fi
+        if ! grep -Fq '/hypr/scripts/lock-active.sh' "$out/hyprland/keybinds.lua"; then
+          echo "validated End4 artifact is missing the managed lock keybinding" >&2
+          exit 1
+        fi
+        if grep -Fq 'loginctl lock-session' "$out/hypridle.conf" || \
+          grep -Fq 'loginctl lock-session' "$out/hyprland/keybinds.lua"; then
+          echo "validated End4 artifact can enter logind before the native lock dispatcher" >&2
           exit 1
         fi
         if grep -Eq 'pidof[[:space:]]+(qs|quickshell|hyprlock)' "$out/hypridle.conf"; then

@@ -22,6 +22,7 @@ make_fixture() {
     'hl.dsp.global("quickshell:searchToggleRelease")' \
     'hl.dsp.global("quickshell:panelFamilyCycle")' \
     'hl.dsp.global("quickshell:sidebarRightToggle")' \
+    'hl.bind("SUPER + L", hl.dsp.exec_cmd("/home/user/.config/hypr/scripts/lock-active.sh"))' \
     "$payload" >"$fixture/hyprland/keybinds.lua"
   printf '%s\n' 'run /scripts/close-active.sh' >"$fixture/wahrwelt/keybinds.lua"
   printf '%s\n' 'lock_cmd = /hypr/scripts/lock-active.sh' >"$fixture/hypridle.conf"
@@ -52,6 +53,21 @@ assert_allowed() {
   if ! output="$(bash "$verifier" "$fixture" 2>&1)"; then
     fail "$name legitimate fixture was rejected: $output"
   fi
+}
+
+assert_lock_rejected() {
+  local name="$1"
+  local payload="$2"
+  local fixture output
+
+  fixture="$(make_fixture "$name" "$payload")"
+  if output="$(bash "$verifier" "$fixture" 2>&1)"; then
+    fail "$name unsafe lock fixture unexpectedly passed"
+  fi
+  case "$output" in
+    *"enter logind before the native lock dispatcher"*) ;;
+    *) fail "$name failed for the wrong reason: $output" ;;
+  esac
 }
 
 # shellcheck disable=SC2016
@@ -94,6 +110,8 @@ assert_allowed ipc-call \
   'hl.exec_cmd("qs -c ii ipc call notificationService dismissAll")'
 assert_allowed qml-ipc-call \
   'Quickshell.execDetached(["qs", "-c", Quickshell.env("qsConfig"), "ipc", "call", "sidebarRight", "toggle"]);'
+assert_lock_rejected logind-lock \
+  'hl.bind("SUPER + L", hl.dsp.exec_cmd("loginctl lock-session"))'
 assert_rejected qml-unmanaged-official-native-settings \
   'Quickshell.execDetached(["qs", "-n", "-p", Quickshell.shellPath("settings.qml")]);'
 assert_rejected qml-native-settings-env-path \

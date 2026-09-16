@@ -35,6 +35,9 @@ check_live_wallpaper_contract() {
   local lock_screen="$root/modules/common/panels/lock/LockScreen.qml"
   local ii_lock_surface="$root/modules/ii/lock/LockSurface.qml"
   local waffle_lock="$root/modules/waffle/lock/WaffleLock.qml"
+  local abstract_widget="$root/modules/ii/background/widgets/AbstractBackgroundWidget.qml"
+  local quick_config
+  local -a image_fallback_files
   local config="$root/modules/common/Config.qml"
   local surface="$root/modules/ii/background/LiveWallpaperSurface.qml"
   local switchwall="$root/scripts/colors/switchwall.sh"
@@ -136,6 +139,7 @@ check_live_wallpaper_contract() {
     'first-frame-thumbnails.sh' \
     'animated_webp' \
     'content' \
+    'function imageSourceFor(path)' \
     'setMediaFilter' \
     'wallpaperModel'; do
     if ! grep -Fq "$expected" "$service"; then
@@ -192,7 +196,7 @@ check_live_wallpaper_contract() {
       exit 1
     fi
   done
-  if ! grep -Fq 'active: !bgRoot.wallpaperSafetyTriggered && (!bgRoot.wallpaperIsVideo || GlobalStates.screenLocked)' "$background" ||
+  if ! grep -Fq 'active: !bgRoot.wallpaperSafetyTriggered && !GlobalStates.screenLocked && !bgRoot.wallpaperIsVideo' "$background" ||
     ! grep -Fq 'visible: active && bgRoot.wallpaperIsLive' "$background" ||
     ! grep -Fq 'path: bgRoot.wallpaperSourcePath' "$background" ||
     ! grep -Fq '    z: 0' "$background"; then
@@ -234,7 +238,42 @@ check_live_wallpaper_contract() {
         exit 1
       fi
     done
+    if ! sed -n '/id: lockBackgroundLoader/,/^    }/p' "$ii_lock_surface" |
+      grep -Fq 'active: true'; then
+      printf 'FAIL: End4 %s lock wallpaper renderer is disabled on Hyprland: %s\n' \
+        "$variant" "$ii_lock_surface" >&2
+      exit 1
+    fi
   fi
+
+  if [ "$variant" = Official ]; then
+    quick_config="$root/modules/settings/QuickConfig.qml"
+    image_fallback_files=(
+      "$quick_config"
+      "$root/modules/waffle/background/WaffleBackground.qml"
+      "$root/modules/waffle/polkit/WPolkitContent.qml"
+      "$root/modules/waffle/taskView/TaskViewWorkspace.qml"
+      "$abstract_widget"
+    )
+  else
+    quick_config="$root/modules/ii/settings/pages/QuickConfig.qml"
+    image_fallback_files=(
+      "$quick_config"
+      "$selector"
+      "$root/modules/ii/background/NiriBackdrop.qml"
+      "$root/modules/ii/overview/NiriOverview.qml"
+      "$root/modules/ii/sidebarRight/SidebarRightContent.qml"
+      "$root/modules/ii/background/widgets/usercard/UserCardWidget.qml"
+      "$abstract_widget"
+    )
+  fi
+  for image_file in "${image_fallback_files[@]}"; do
+    if [ ! -f "$image_file" ] || ! grep -Fq 'Wallpapers.imageSourceFor' "$image_file"; then
+      printf 'FAIL: End4 %s image-only wallpaper consumer lacks a live-media fallback: %s\n' \
+        "$variant" "$image_file" >&2
+      exit 1
+    fi
+  done
   if grep -Fq 'id: previousWallpaper' "$background" &&
     ! sed -n '/id: previousWallpaper/,/^            }/p' "$background" |
       grep -Fq 'visible: !bgRoot.videoRevealed'; then
@@ -593,6 +632,12 @@ if [ "$mode" = "hypr" ]; then
   done
   if ! grep -Fq '/hypr/scripts/lock-active.sh' "$artifact/hypridle.conf"; then
     printf 'FAIL: realized End4 artifact is missing the managed lock contract\n' >&2
+    exit 1
+  fi
+  if grep -Fq 'loginctl lock-session' "$artifact/hypridle.conf" ||
+    grep -Fq 'loginctl lock-session' "$artifact/hyprland/keybinds.lua" ||
+    ! grep -Fq '/hypr/scripts/lock-active.sh' "$artifact/hyprland/keybinds.lua"; then
+    printf 'FAIL: realized End4 artifact can enter logind before the native lock dispatcher\n' >&2
     exit 1
   fi
 fi

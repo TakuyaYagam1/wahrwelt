@@ -224,7 +224,7 @@ def patch_background(root: Path) -> None:
         "\\1property bool wallpaperIsVideo: Wallpapers.isVideoPath(wallpaperSourcePath)\n"
         "\\1property bool wallpaperIsAnimated: Wallpapers.isAnimatedPath(wallpaperSourcePath)\n"
         "\\1property bool wallpaperIsLive: Wallpapers.isLivePath(wallpaperSourcePath)\n"
-        "\\1property string wallpaperPath: wallpaperIsLive ? Wallpapers.fallbackFor(wallpaperSourcePath) : wallpaperSourcePath\n"
+        "\\1property string wallpaperPath: Wallpapers.imageSourceFor(wallpaperSourcePath)\n"
     )
     text, count = property_block.subn(replacement, text, count=1)
     if count != 1:
@@ -243,7 +243,7 @@ def patch_background(root: Path) -> None:
         f"{indent}    z: 0\n"
         f"{indent}    path: bgRoot.wallpaperSourcePath\n"
         f"{indent}    fallbackPath: Wallpapers.fallbackFor(path)\n"
-        f"{indent}    active: !bgRoot.wallpaperSafetyTriggered && (!bgRoot.wallpaperIsVideo || GlobalStates.screenLocked)\n"
+        f"{indent}    active: !bgRoot.wallpaperSafetyTriggered && !GlobalStates.screenLocked && !bgRoot.wallpaperIsVideo\n"
         f"{indent}    visible: active && bgRoot.wallpaperIsLive\n"
         f"{indent}}}\n\n"
     )
@@ -431,7 +431,7 @@ def patch_waffle_lock(root: Path) -> None:
     path.write_text(text)
 
 
-def patch_pc_niri_lock(root: Path) -> None:
+def patch_pc_lock_surface(root: Path) -> None:
     path = root / "modules/ii/lock/LockSurface.qml"
     text = path.read_text()
     text = replace_once(
@@ -439,6 +439,12 @@ def patch_pc_niri_lock(root: Path) -> None:
         "import qs.modules.common.panels.lock\n",
         "import qs.modules.common.panels.lock\nimport qs.modules.ii.background\n",
         f"live wallpaper import in {path}",
+    )
+    text = replace_once(
+        text,
+        "    Loader {\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n",
+        "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: true\n",
+        f"pC lock wallpaper surface activation in {path}",
     )
     old = """        sourceComponent: Item {
             anchors.fill: parent
@@ -490,8 +496,124 @@ def patch_pc_niri_lock(root: Path) -> None:
             }
         }
 """
-    text = replace_once(text, old, new, f"pC niri lock live wallpaper in {path}")
+    text = replace_once(text, old, new, f"pC lock live wallpaper in {path}")
     path.write_text(text)
+
+
+def patch_image_consumers(root: Path, variant: str) -> None:
+    tree = root / "ii" if (root / "ii").is_dir() else root
+
+    def replace(relative: str, old: str, new: str, label: str) -> None:
+        path = tree / relative
+        text = path.read_text()
+        path.write_text(replace_once(text, old, new, f"{label} in {path}"))
+
+    abstract_widget = "modules/ii/background/widgets/AbstractBackgroundWidget.qml"
+    abstract_path = tree / abstract_widget
+    abstract_text = abstract_path.read_text()
+    abstract_text = replace_once(
+        abstract_text,
+        "import qs\nimport qs.modules.common\n",
+        "import qs\nimport qs.services\nimport qs.modules.common\n",
+        f"wallpaper service import in {abstract_path}",
+    )
+    abstract_text = replace_once(
+        abstract_text,
+        '    property bool wallpaperIsVideo: Config.options.background.wallpaperPath.endsWith(".mp4") || Config.options.background.wallpaperPath.endsWith(".webm") || Config.options.background.wallpaperPath.endsWith(".mkv") || Config.options.background.wallpaperPath.endsWith(".avi") || Config.options.background.wallpaperPath.endsWith(".mov")\n    property string wallpaperPath: wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath',
+        "    property bool wallpaperIsVideo: Wallpapers.isVideoPath(Config.options.background.wallpaperPath)\n    property string wallpaperPath: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+        f"widget wallpaper fallback in {abstract_path}",
+    )
+    abstract_path.write_text(abstract_text)
+
+    if variant == "pc":
+        replace(
+            "modules/ii/settings/pages/QuickConfig.qml",
+            "                        source: /\\.(mp4|webm|mkv|avi|mov)$/i.test(Config.options.background.wallpaperPath)\n                            ? Config.options.background.thumbnailPath\n                            : Config.options.background.wallpaperPath",
+            "                        source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+            "pC settings wallpaper preview fallback",
+        )
+        replace(
+            "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml",
+            "                source: Config.options.background.wallpaperPath",
+            "                source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+            "pC selector blur fallback",
+        )
+        replace(
+            "modules/ii/background/NiriBackdrop.qml",
+            "                source: backdrop.wallpaperPath",
+            "                source: Wallpapers.imageSourceFor(backdrop.wallpaperPath)",
+            "pC Niri backdrop fallback",
+        )
+        replace(
+            "modules/ii/overview/NiriOverview.qml",
+            "                            source: Config.options.background.wallpaperPath",
+            "                            source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+            "pC overview fallback",
+        )
+        replace(
+            "modules/ii/sidebarRight/SidebarRightContent.qml",
+            "                                    source: Config.options.sidebar.bannerImage !== \"\" \n                                        ? Config.options.sidebar.bannerImage \n                                        : Config.options.background.wallpaperPath",
+            "                                    source: Config.options.sidebar.bannerImage !== \"\" \n                                        ? Config.options.sidebar.bannerImage \n                                        : Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+            "pC sidebar banner fallback",
+        )
+        replace(
+            "modules/ii/background/widgets/usercard/UserCardWidget.qml",
+            '                    property string effectiveSource: "file://" + (GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath)',
+            '                    property string rawSource: GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath\n                    property url effectiveSource: Qt.resolvedUrl(Wallpapers.imageSourceFor(rawSource))',
+            "pC user card wallpaper fallback",
+        )
+        return
+
+    replace(
+        "modules/settings/QuickConfig.qml",
+        "                    source: Config.options.background.wallpaperPath",
+        "                    source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+        "official settings wallpaper preview fallback",
+    )
+    replace(
+        "modules/waffle/polkit/WPolkitContent.qml",
+        "        source: Config.options.background.wallpaperPath",
+        "        source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+        "official polkit wallpaper fallback",
+    )
+    replace(
+        "modules/waffle/taskView/TaskViewWorkspace.qml",
+        "                    source: Config.options.background.wallpaperPath",
+        "                    source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+        "official task view wallpaper fallback",
+    )
+
+    waffle_path = tree / "modules/waffle/background/WaffleBackground.qml"
+    waffle_text = waffle_path.read_text()
+    waffle_text = replace_once(
+        waffle_text,
+        "import qs.modules.ii.background.widgets\n",
+        "import qs.modules.ii.background\nimport qs.modules.ii.background.widgets\n",
+        f"official Waffle live wallpaper import in {waffle_path}",
+    )
+    waffle_text = replace_once(
+        waffle_text,
+        "        color: \"transparent\"\n\n        StyledImage {\n            anchors.fill: parent\n            source: Config.options.background.wallpaperPath\n            fillMode: Image.PreserveAspectCrop\n        }",
+        """        color: \"transparent\"
+        property string wallpaperPath: Config.options.background.wallpaperPath
+
+        StyledImage {
+            anchors.fill: parent
+            source: Wallpapers.imageSourceFor(panelRoot.wallpaperPath)
+            visible: !Wallpapers.isLivePath(panelRoot.wallpaperPath)
+            fillMode: Image.PreserveAspectCrop
+        }
+
+        LiveWallpaperSurface {
+            anchors.fill: parent
+            path: panelRoot.wallpaperPath
+            fallbackPath: Wallpapers.fallbackFor(path)
+            active: true
+            visible: Wallpapers.isLivePath(path)
+        }""",
+        f"official Waffle live wallpaper surface in {waffle_path}",
+    )
+    waffle_path.write_text(waffle_text)
 
 
 def patch_appearance(root: Path) -> None:
@@ -562,7 +684,8 @@ def main() -> int:
     patch_lock_dispatch(root, args.variant)
     patch_waffle_lock(root)
     if args.variant == "pc":
-        patch_pc_niri_lock(root)
+        patch_pc_lock_surface(root)
+    patch_image_consumers(root, args.variant)
     patch_appearance(root)
     if args.variant == "official":
         patch_official_pc_widget_compat(root)

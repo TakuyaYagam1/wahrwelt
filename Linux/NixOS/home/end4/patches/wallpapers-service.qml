@@ -107,6 +107,10 @@ Singleton {
         return `${FileUtils.trimFileProtocol(Directories.assetsPath)}/images/default_wallpaper.png`;
     }
 
+    function imageSourceFor(path) {
+        return root.isLivePath(path) ? root.fallbackFor(path) : path;
+    }
+
     function setMediaFilter(filter) {
         if (!["all", "static", "live"].includes(filter)) return;
         root.mediaFilter = filter;
