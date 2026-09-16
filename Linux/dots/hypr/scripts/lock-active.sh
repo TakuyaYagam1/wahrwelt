@@ -16,7 +16,7 @@ if [ -z "$profile" ]; then
 fi
 
 if wahrwelt_valid_end4_variant "$profile" && wahrwelt_end4_profile_running "$profile"; then
-  if hyprctl dispatch global quickshell:lock >/dev/null; then
+  if hyprctl dispatch 'hl.dsp.global("quickshell:lock")' >/dev/null; then
     exit 0
   fi
 fi

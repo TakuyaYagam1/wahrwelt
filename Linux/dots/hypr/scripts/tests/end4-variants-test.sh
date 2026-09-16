@@ -639,7 +639,7 @@ PATH="$fake_bin:$PATH" \
   WAHRWELT_LOCK_TEST_PID="$lock_test_pid" \
   WAHRWELT_LOCK_TEST_LOG="$lock_log" \
   "$scripts_dir/lock-active.sh"
-assert_eq "hyprctl dispatch global quickshell:lock" "$(tr -d '\n' <"$lock_log")" "active exact End4 marker uses native lock"
+assert_eq 'hyprctl dispatch hl.dsp.global("quickshell:lock")' "$(tr -d '\n' <"$lock_log")" "active exact End4 marker uses native lock"
 
 : >"$lock_log"
 PATH="$fake_bin:$PATH" \

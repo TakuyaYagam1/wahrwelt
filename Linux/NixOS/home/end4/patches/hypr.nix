@@ -46,7 +46,7 @@ let
     general {
         lock_cmd = $lock_cmd
         before_sleep_cmd = $lock_cmd
-        after_sleep_cmd = hyprctl dispatch global quickshell:lockFocus
+        after_sleep_cmd = hyprctl dispatch 'hl.dsp.global("quickshell:lockFocus")'
         inhibit_sleep = 3
     }
 

@@ -631,7 +631,7 @@ func TestManagedEnd4LockHelperUsesExactProfileMarker(t *testing.T) {
 		"wahrwelt_read_active_shell",
 		"wahrwelt_valid_end4_variant",
 		"wahrwelt_end4_profile_running",
-		"hyprctl dispatch global quickshell:lock",
+		`hyprctl dispatch 'hl.dsp.global("quickshell:lock")'`,
 		`exec hyprlock -c "$wahrwelt_hypr_runtime_dir/hyprlock.conf"`,
 	} {
 		if !strings.Contains(helper, want) {
@@ -645,6 +645,7 @@ func TestManagedEnd4LockHelperUsesExactProfileMarker(t *testing.T) {
 	patch := readTestFile(t, "../../../NixOS/home/end4/patches/hypr.nix")
 	for _, want := range []string{
 		`$lock_cmd = ${lib.escapeShellArg "${config.xdg.configHome}/hypr/scripts/lock-active.sh"}`,
+		`after_sleep_cmd = hyprctl dispatch 'hl.dsp.global("quickshell:lockFocus")'`,
 		"retained generic process-name lock fallback",
 	} {
 		if !strings.Contains(patch, want) {
