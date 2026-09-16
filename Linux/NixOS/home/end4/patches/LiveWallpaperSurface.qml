@@ -1,4 +1,5 @@
 import QtQuick
+import QtMultimedia
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -14,6 +15,8 @@ Item {
     property bool active: true
 
     function stopLivePlayback() {
+        videoPlayer.stop();
+        videoPlayer.source = "";
         animatedImage.playing = false;
         animatedImage.source = "";
     }
@@ -22,9 +25,10 @@ Item {
         root.failed = false;
         root.stopLivePlayback();
         if (!root.active || !root.path || root.path.length === 0) return;
-        // switchwall.sh owns video playback through mpvpaper. Keeping video
-        // out of this surface guarantees one active backend per selection.
-        if (["animated", "animated_webp"].includes(root.mediaKind)) {
+        if (root.mediaKind === "video") {
+            videoPlayer.source = Qt.resolvedUrl(root.path);
+            videoPlayer.play();
+        } else if (["animated", "animated_webp"].includes(root.mediaKind)) {
             animatedImage.source = root.path;
             animatedImage.playing = true;
         }
@@ -73,9 +77,27 @@ Item {
     StyledImage {
         id: fallbackImage
         anchors.fill: parent
-        visible: root.failed
+        visible: root.failed || (root.active && root.mediaKind === "video")
         source: root.fallbackPath.length > 0 ? root.fallbackPath : `${FileUtils.trimFileProtocol(Directories.assetsPath)}/images/default_wallpaper.png`
         fillMode: Image.PreserveAspectCrop
         cache: true
+    }
+
+    MediaPlayer {
+        id: videoPlayer
+        loops: MediaPlayer.Infinite
+        audioOutput: AudioOutput {
+            muted: true
+            volume: 0
+        }
+        videoOutput: videoOutput
+        onErrorOccurred: root.showFallback()
+    }
+
+    VideoOutput {
+        id: videoOutput
+        anchors.fill: parent
+        visible: root.active && root.mediaKind === "video" && !root.failed
+        fillMode: VideoOutput.PreserveAspectCrop
     }
 }

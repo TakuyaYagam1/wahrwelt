@@ -240,11 +240,11 @@ def patch_background(root: Path) -> None:
         f"{indent}LiveWallpaperSurface {{\n"
         f"{indent}    id: liveWallpaperSurface\n"
         f"{indent}    anchors.fill: parent\n"
-        f"{indent}    z: 2\n"
-        f"{indent}    path: Wallpapers.previewPath || bgRoot.wallpaperSourcePath\n"
+        f"{indent}    z: 0\n"
+        f"{indent}    path: bgRoot.wallpaperSourcePath\n"
         f"{indent}    fallbackPath: Wallpapers.fallbackFor(path)\n"
-        f"{indent}    active: !bgRoot.wallpaperSafetyTriggered\n"
-        f"{indent}    visible: active && bgRoot.wallpaperIsAnimated\n"
+        f"{indent}    active: !bgRoot.wallpaperSafetyTriggered && (!bgRoot.wallpaperIsVideo || GlobalStates.screenLocked)\n"
+        f"{indent}    visible: active && bgRoot.wallpaperIsLive\n"
         f"{indent}}}\n\n"
     )
     text = text[: match.start()] + live_surface + text[match.start() :]
@@ -326,6 +326,174 @@ def patch_background(root: Path) -> None:
     path.write_text(text)
 
 
+def patch_lock_dispatch(root: Path, variant: str) -> None:
+    path = root / ("ii/modules/common/panels/lock/LockScreen.qml" if (root / "ii").is_dir() else "modules/common/panels/lock/LockScreen.qml")
+    text = path.read_text()
+    function_anchor = "    function lock() {\n"
+    if variant == "pc":
+        wallpaper_expression = """        const custom = Config.options.background.lockWall;
+        return custom.length > 0 ? custom : Config.options.background.wallpaperPath;"""
+    else:
+        wallpaper_expression = "        return Config.options.background.wallpaperPath;"
+    function_replacement = f"""    function lockWallpaperPath() {{
+{wallpaper_expression}
+    }}
+
+    function lock() {{
+"""
+    text = replace_once(text, function_anchor, function_replacement, f"live lock path helper in {path}")
+    text = replace_once(
+        text,
+        "        if (Config.options.lock.useHyprlock) {",
+        "        if (Config.options.lock.useHyprlock && !Wallpapers.isLivePath(root.lockWallpaperPath())) {",
+        f"live wallpaper native lock routing in {path}",
+    )
+    path.write_text(text)
+
+
+def patch_waffle_lock(root: Path) -> None:
+    path = root / ("ii/modules/waffle/lock/WaffleLock.qml" if (root / "ii").is_dir() else "modules/waffle/lock/WaffleLock.qml")
+    if not path.is_file():
+        return
+    text = path.read_text()
+    text = replace_once(
+        text,
+        "import qs.modules.common.panels.lock\n",
+        "import qs.modules.common.panels.lock\nimport qs.modules.ii.background\n",
+        f"live wallpaper import in {path}",
+    )
+    old = """        StyledImage {
+            id: bg
+            z: 0
+            width: parent.width
+            height: parent.height
+            onStatusChanged: {
+                if (status === Image.Ready) {
+                    print("Lock wallpaper loaded");
+                    print(lockSurfaceItem.height);
+                    y = -lockSurfaceItem.height;
+                    openAnim.restart();
+                }
+            }
+            source: Config.options.background.wallpaperPath
+            fillMode: Image.PreserveAspectCrop
+
+            PropertyAnimation {
+                id: openAnim
+                target: bg
+                property: "y"
+                to: 0
+                duration: 350
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Looks.transition.easing.bezierCurve.easeIn
+            }
+        }
+"""
+    new = """        Item {
+            id: bg
+            z: 0
+            width: parent.width
+            height: parent.height
+            property string wallpaperPath: Config.options.background.wallpaperPath
+
+            Component.onCompleted: {
+                y = -lockSurfaceItem.height;
+                openAnim.restart();
+            }
+
+            StyledImage {
+                anchors.fill: parent
+                visible: !Wallpapers.isLivePath(bg.wallpaperPath)
+                source: visible ? bg.wallpaperPath : ""
+                fillMode: Image.PreserveAspectCrop
+            }
+
+            LiveWallpaperSurface {
+                anchors.fill: parent
+                path: bg.wallpaperPath
+                fallbackPath: Wallpapers.fallbackFor(path)
+                active: true
+                visible: Wallpapers.isLivePath(bg.wallpaperPath)
+            }
+
+            PropertyAnimation {
+                id: openAnim
+                target: bg
+                property: "y"
+                to: 0
+                duration: 350
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Looks.transition.easing.bezierCurve.easeIn
+            }
+        }
+"""
+    text = replace_once(text, old, new, f"Waffle lock live wallpaper in {path}")
+    path.write_text(text)
+
+
+def patch_pc_niri_lock(root: Path) -> None:
+    path = root / "modules/ii/lock/LockSurface.qml"
+    text = path.read_text()
+    text = replace_once(
+        text,
+        "import qs.modules.common.panels.lock\n",
+        "import qs.modules.common.panels.lock\nimport qs.modules.ii.background\n",
+        f"live wallpaper import in {path}",
+    )
+    old = """        sourceComponent: Item {
+            anchors.fill: parent
+
+            Image {
+                id: lockBgSource
+                anchors.fill: parent
+                source: Config.options.background.wallpaperPath
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                visible: false
+            }
+            FastBlur {
+                anchors.fill: parent
+                source: lockBgSource
+                radius: 0 // fixme
+            }
+        }
+"""
+    new = """        sourceComponent: Item {
+            id: niriBackground
+            anchors.fill: parent
+            property string wallpaperPath: Config.options.background.lockWall !== ""
+                ? Config.options.background.lockWall
+                : Config.options.background.wallpaperPath
+
+            Image {
+                id: lockBgSource
+                anchors.fill: parent
+                source: visible ? niriBackground.wallpaperPath : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                visible: !Wallpapers.isLivePath(niriBackground.wallpaperPath)
+            }
+            FastBlur {
+                anchors.fill: parent
+                source: lockBgSource
+                radius: 0 // fixme
+                visible: lockBgSource.visible
+            }
+            LiveWallpaperSurface {
+                anchors.fill: parent
+                path: niriBackground.wallpaperPath
+                fallbackPath: Wallpapers.fallbackFor(path)
+                active: true
+                visible: Wallpapers.isLivePath(niriBackground.wallpaperPath)
+            }
+        }
+"""
+    text = replace_once(text, old, new, f"pC niri lock live wallpaper in {path}")
+    path.write_text(text)
+
+
 def patch_appearance(root: Path) -> None:
     path = root / ("ii/modules/common/Appearance.qml" if (root / "ii").is_dir() else "modules/common/Appearance.qml")
     text = path.read_text()
@@ -391,6 +559,10 @@ def main() -> int:
     patch_selector(root)
     patch_directory_item(root)
     patch_background(root)
+    patch_lock_dispatch(root, args.variant)
+    patch_waffle_lock(root)
+    if args.variant == "pc":
+        patch_pc_niri_lock(root)
     patch_appearance(root)
     if args.variant == "official":
         patch_official_pc_widget_compat(root)

@@ -1,0 +1,613 @@
+diff --git a/meson.build b/meson.build
+index 7ff5451..fe3f0c6 100644
+--- a/meson.build
++++ b/meson.build
+@@ -739,6 +739,7 @@ _noctalia_sources = files(
+   'src/shell/wallpaper/wallpaper_geometry.cpp',
+   'src/shell/wallpaper/wallpaper_media.cpp',
+   'src/shell/wallpaper/live_wallpaper_controller.cpp',
++  'src/shell/lockscreen/lockscreen_video_player.cpp',
+   'src/shell/wallpaper/wallpaper_shuffle_state.cpp',
+   'src/shell/wallpaper/wallpaper.cpp',
+   'src/shell/wallpaper/panel/wallpaper_panel.cpp',
+@@ -1246,6 +1247,7 @@ if build_tests
+     'vdir_reader',
+     'virtual_grid_view_gesture',
+     'wallpaper_shuffle_state',
++    'lockscreen_video_player',
+     'wallpaper_media',
+     'live_wallpaper_controller',
+     'wayland_output_scale',
+diff --git a/src/shell/lockscreen/lock_surface.cpp b/src/shell/lockscreen/lock_surface.cpp
+index 9b98e95..99fcd9f 100644
+--- a/src/shell/lockscreen/lock_surface.cpp
++++ b/src/shell/lockscreen/lock_surface.cpp
+@@ -13,6 +13,7 @@
+ #include "render/scene/wallpaper_node.h"
+ #include "shell/lockscreen/lockscreen_login_box.h"
+ #include "shell/lockscreen/lockscreen_widgets_host.h"
++#include "shell/wallpaper/wallpaper_media.h"
+ #include "shell/session/session_action_meta.h"
+ #include "shell/session/session_action_runner.h"
+ #include "system/weather_service.h"
+@@ -32,6 +33,7 @@
+ #include <chrono>
+ #include <cmath>
+ #include <ctime>
++#include <filesystem>
+ #include <format>
+ #include <memory>
+ #include <string_view>
+@@ -546,6 +548,7 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
+ }
+
+ LockSurface::~LockSurface() {
++  stopVideoPlayback();
+   m_aliveGuard.reset();
+   releaseCaptureTextures();
+   if (m_wallpaperTexture.id != 0) {
+@@ -686,6 +689,7 @@ void LockSurface::setWallpaperPath(std::string wallpaperPath) {
+   if (m_wallpaperPath == wallpaperPath) {
+     return;
+   }
++  stopVideoPlayback();
+
+   if (m_blurredWallpaperTexture.id != 0 && renderContext() != nullptr) {
+     renderContext()->backend().makeCurrentNoSurface();
+@@ -731,9 +735,11 @@ void LockSurface::setWallpaperFillColor(Color fillColor) {
+ }
+
+ void LockSurface::setDesktopCapture(std::optional<ScreencopyImage> capture) {
++  stopVideoPlayback();
+   m_desktopCapture = std::move(capture);
+   m_captureDirty = true;
+   releaseCaptureTextures();
++  m_wallpaperDirty = true;
+   requestLayout();
+ }
+
+@@ -1637,7 +1643,13 @@ void LockSurface::releaseWallpaperTextureRef(const std::string& path) {
+ }
+
+ void LockSurface::applyWallpaperTexture() {
+-  if (m_desktopCapture.has_value() && !m_desktopCapture->rgba.empty()) {
++  const std::filesystem::path wallpaperPath(m_wallpaperPath);
++  const bool liveWallpaper = noctalia::wallpaper::WallpaperMedia::isLivePath(wallpaperPath);
++  if (liveWallpaper) {
++    ensureVideoPlayback();
++  }
++
++  if (!liveWallpaper && m_desktopCapture.has_value() && !m_desktopCapture->rgba.empty()) {
+     applyBlurredDesktopTexture();
+     if (m_blurredDesktopTexture.id != 0) {
+       return;
+@@ -1648,6 +1660,11 @@ void LockSurface::applyWallpaperTexture() {
+     return;
+   }
+
++  if (liveWallpaper && m_videoTexture.id != 0) {
++    m_wallpaperDirty = false;
++    return;
++  }
++
+   bool loaded = true;
+   Color color = rgba(0.0F, 0.0F, 0.0F, 1.0F);
+   if (parseColorWallpaperPath(m_wallpaperPath, color)) {
+@@ -1667,13 +1684,16 @@ void LockSurface::applyWallpaperTexture() {
+     m_wallpaper->setFillMode(m_wallpaperFillMode);
+     m_wallpaper->setFillColor(m_wallpaperFillColor);
+   } else if (m_textureCache != nullptr && !m_wallpaperPath.empty()) {
+-    const bool needsReload = m_wallpaperTexture.id == 0 || m_textureWallpaperPath != m_wallpaperPath;
++    const std::string texturePath = liveWallpaper
++        ? noctalia::wallpaper::WallpaperMedia::ensureThumbnail(wallpaperPath).string()
++        : m_wallpaperPath;
++    const bool needsReload = m_wallpaperTexture.id == 0 || m_textureWallpaperPath != texturePath;
+     TextureHandle newTexture = m_wallpaperTexture;
+     if (needsReload) {
+-      newTexture = m_textureCache->acquire(m_wallpaperPath);
++      newTexture = m_textureCache->acquire(texturePath);
+       if (newTexture.id == 0 && !m_textureCache->shared() && renderContext() != nullptr) {
+         renderContext()->backend().makeCurrentNoSurface();
+-        newTexture = renderContext()->textureManager().loadFromFile(m_wallpaperPath, 0, true);
++        newTexture = renderContext()->textureManager().loadFromFile(texturePath, 0, true);
+       }
+     }
+
+@@ -1684,7 +1704,8 @@ void LockSurface::applyWallpaperTexture() {
+         releaseWallpaperTextureRef(m_textureWallpaperPath);
+       }
+       m_wallpaperTexture = newTexture;
+-      m_textureWallpaperPath = m_wallpaperPath;
++      m_textureWallpaperPath = texturePath;
++      m_videoFallbackActive = liveWallpaper;
+
+       TextureHandle textureToDisplay = m_wallpaperTexture;
+       if (m_blurredWallpaperTexture.id != 0 && renderContext() != nullptr) {
+@@ -1692,7 +1713,7 @@ void LockSurface::applyWallpaperTexture() {
+         renderContext()->textureManager().unload(m_blurredWallpaperTexture);
+         m_blurredWallpaperTexture = {};
+       }
+-      if (m_blurIntensity > 0.0F && renderContext() != nullptr) {
++      if (!liveWallpaper && m_blurIntensity > 0.0F && renderContext() != nullptr) {
+         auto* renderer = renderContext();
+         renderer->makeCurrent(renderTarget());
+         static constexpr int kBlurRounds = 3;
+@@ -1726,6 +1747,86 @@ void LockSurface::applyWallpaperTexture() {
+   m_wallpaperDirty = !loaded;
+ }
+
++void LockSurface::ensureVideoPlayback() {
++  if (m_videoFrameTimer.active()) {
++    return;
++  }
++  if (!m_videoPlayer.start(m_wallpaperPath)) {
++    return;
++  }
++  m_videoFrameTimer.startRepeating(std::chrono::milliseconds(33), [this] { consumeVideoFrame(); });
++}
++
++void LockSurface::consumeVideoFrame() {
++  auto* renderer = renderContext();
++  if (renderer == nullptr || width() == 0 || height() == 0) {
++    return;
++  }
++
++  const auto frame = m_videoPlayer.takeLatestFrame();
++  if (!frame.has_value()) {
++    if (!m_videoPlayer.isRunning()) {
++      m_videoFrameTimer.stop();
++    }
++    return;
++  }
++  if (!renderer->makeCurrent(renderTarget())) {
++    return;
++  }
++
++  auto& textures = renderer->textureManager();
++  if (m_videoTexture.id == 0) {
++    m_videoTexture = textures.loadFromRgba(
++        frame->data(), noctalia::lockscreen::LockscreenVideoPlayer::kWidth,
++        noctalia::lockscreen::LockscreenVideoPlayer::kHeight, false
++    );
++  } else if (!textures.updateSubImage(
++                 m_videoTexture, frame->data(), 0, 0, noctalia::lockscreen::LockscreenVideoPlayer::kWidth,
++                 noctalia::lockscreen::LockscreenVideoPlayer::kHeight, TextureDataFormat::Rgba
++             )) {
++    textures.unload(m_videoTexture);
++    m_videoTexture = textures.loadFromRgba(
++        frame->data(), noctalia::lockscreen::LockscreenVideoPlayer::kWidth,
++        noctalia::lockscreen::LockscreenVideoPlayer::kHeight, false
++    );
++  }
++  if (m_videoTexture.id == 0) {
++    return;
++  }
++
++  if (m_videoFallbackActive && m_wallpaperTexture.id != 0) {
++    releaseWallpaperTextureRef(m_textureWallpaperPath);
++  }
++  m_videoFallbackActive = false;
++  m_wallpaper->setTextures(
++      m_videoTexture.id, {}, static_cast<float>(m_videoTexture.width), static_cast<float>(m_videoTexture.height), 0.0F,
++      0.0F
++  );
++  m_wallpaper->setTransition(WallpaperTransition::Fade, 0.0F, TransitionParams{});
++  m_wallpaper->setFillMode(m_wallpaperFillMode);
++  m_wallpaper->setFillColor(m_wallpaperFillColor);
++  m_wallpaperDirty = false;
++  requestRedraw();
++}
++
++void LockSurface::stopVideoPlayback() {
++  m_videoFrameTimer.stop();
++  m_videoPlayer.stop();
++  releaseVideoTexture();
++  m_videoFallbackActive = false;
++}
++
++void LockSurface::releaseVideoTexture() {
++  if (m_videoTexture.id == 0) {
++    return;
++  }
++  if (renderContext() != nullptr) {
++    renderContext()->backend().makeCurrentNoSurface();
++    renderContext()->textureManager().unload(m_videoTexture);
++  }
++  m_videoTexture = {};
++}
++
+ void LockSurface::releaseCaptureTextures() {
+   if (renderContext() == nullptr) {
+     m_blurredWallpaperTexture = {};
+@@ -1810,9 +1911,15 @@ void LockSurface::applyBlurredDesktopTexture() {
+ }
+
+ void LockSurface::onGpuResourcesInvalidated() {
++  stopVideoPlayback();
+   releaseCaptureTextures();
+
+-  if (!m_wallpaperPath.empty() && m_textureCache != nullptr) {
++  const bool liveWallpaper =
++      noctalia::wallpaper::WallpaperMedia::isLivePath(std::filesystem::path(m_wallpaperPath));
++  if (liveWallpaper && m_wallpaperTexture.id != 0) {
++    releaseWallpaperTextureRef(m_textureWallpaperPath);
++  }
++  if (!liveWallpaper && !m_wallpaperPath.empty() && m_textureCache != nullptr) {
+     if (m_textureCache->shared()) {
+       m_wallpaperTexture = m_textureCache->peek(m_wallpaperPath);
+     } else if (renderContext() != nullptr) {
+@@ -1829,12 +1936,16 @@ void LockSurface::onGpuResourcesInvalidated() {
+ }
+
+ void LockSurface::prepareForGraphicsReset() noexcept {
++  m_videoFrameTimer.stop();
++  m_videoPlayer.stop();
+   m_blurCache.abandon();
+   m_wallpaperBlurCache.abandon();
+   m_wallpaperTexture = {};
+   m_blurredWallpaperTexture = {};
+   m_captureSourceTexture = {};
+   m_blurredDesktopTexture = {};
++  m_videoTexture = {};
++  m_videoFallbackActive = false;
+   m_captureDirty = true;
+   m_wallpaperDirty = true;
+ }
+diff --git a/src/shell/lockscreen/lock_surface.h b/src/shell/lockscreen/lock_surface.h
+index 76a27cb..fa19e7d 100644
+--- a/src/shell/lockscreen/lock_surface.h
++++ b/src/shell/lockscreen/lock_surface.h
+@@ -2,6 +2,7 @@
+
+ #include "capture/screencopy_capture.h"
+ #include "config/config_service.h"
++#include "core/timer_manager.h"
+ #include "render/animation/animation_manager.h"
+ #include "render/core/blur_cache.h"
+ #include "render/core/color.h"
+@@ -9,6 +10,7 @@
+ #include "render/scene/input_dispatcher.h"
+ #include "render/scene/node.h"
+ #include "shell/lockscreen/lockscreen_login_box.h"
++#include "shell/lockscreen/lockscreen_video_player.h"
+ #include "wayland/surface.h"
+
+ #include <array>
+@@ -104,6 +106,10 @@ private:
+
+   void prepareFrame(bool needsUpdate, bool needsLayout);
+   void applyWallpaperTexture();
++  void ensureVideoPlayback();
++  void consumeVideoFrame();
++  void stopVideoPlayback();
++  void releaseVideoTexture();
+   void applyBlurredDesktopTexture();
+   void releaseWallpaperTextureRef(const std::string& path);
+   void releaseCaptureTextures();
+@@ -156,6 +162,8 @@ private:
+   Flex* m_sessionRow = nullptr;
+   std::vector<Button*> m_sessionButtons;
+   SharedTextureCache* m_textureCache = nullptr;
++  noctalia::lockscreen::LockscreenVideoPlayer m_videoPlayer;
++  Timer m_videoFrameTimer;
+   TextureHandle m_wallpaperTexture{};
+   TextureHandle m_blurredWallpaperTexture{};
+   TextureHandle m_captureSourceTexture{};
+@@ -173,6 +181,8 @@ private:
+   WallpaperFillMode m_wallpaperFillMode = WallpaperFillMode::Crop;
+   Color m_wallpaperFillColor = rgba(0.0F, 0.0F, 0.0F, 0.0F);
+   bool m_wallpaperDirty = false;
++  bool m_videoFallbackActive = false;
++  TextureHandle m_videoTexture{};
+   InputDispatcher m_inputDispatcher;
+   std::function<void()> m_onLogin;
+   std::function<void()> m_onCycleLayout;
+diff --git a/noctalia-lock-work/src/shell/lockscreen/lockscreen_video_player.cpp b/src/shell/lockscreen/lockscreen_video_player.cpp
+new file mode 100644
+index 0000000..701c573
+--- /dev/null
++++ b/src/shell/lockscreen/lockscreen_video_player.cpp
+@@ -0,0 +1,144 @@
++#include "shell/lockscreen/lockscreen_video_player.h"
++
++#include "core/process/process.h"
++
++#include <atomic>
++#include <mutex>
++#include <utility>
++
++namespace noctalia::lockscreen {
++
++VideoFrameAssembler::VideoFrameAssembler(std::size_t frameBytes) : m_frameBytes(frameBytes == 0 ? 1 : frameBytes) {}
++
++void VideoFrameAssembler::append(std::string_view chunk) {
++  if (chunk.empty()) {
++    return;
++  }
++
++  m_pending.insert(
++      m_pending.end(), reinterpret_cast<const std::uint8_t*>(chunk.data()),
++      reinterpret_cast<const std::uint8_t*>(chunk.data() + chunk.size())
++  );
++  const std::size_t completeFrames = m_pending.size() / m_frameBytes;
++  if (completeFrames == 0) {
++    return;
++  }
++
++  const std::size_t latestOffset = (completeFrames - 1) * m_frameBytes;
++  m_latest = std::vector<std::uint8_t>(
++      m_pending.begin() + static_cast<std::ptrdiff_t>(latestOffset),
++      m_pending.begin() + static_cast<std::ptrdiff_t>(latestOffset + m_frameBytes)
++  );
++  const std::size_t remainderOffset = completeFrames * m_frameBytes;
++  std::vector<std::uint8_t> remainder(
++      m_pending.begin() + static_cast<std::ptrdiff_t>(remainderOffset), m_pending.end()
++  );
++  m_pending.swap(remainder);
++}
++
++std::optional<std::vector<std::uint8_t>> VideoFrameAssembler::takeLatest() {
++  if (!m_latest.has_value()) {
++    return std::nullopt;
++  }
++  std::optional<std::vector<std::uint8_t>> result = std::move(m_latest);
++  m_latest.reset();
++  return result;
++}
++
++std::size_t VideoFrameAssembler::bufferedBytes() const noexcept { return m_pending.size(); }
++
++struct LockscreenVideoPlayer::SharedState {
++  explicit SharedState(std::size_t frameBytes)
++      : assembler(frameBytes), cancel(std::make_shared<std::atomic<bool>>(false)) {}
++
++  mutable std::mutex mutex;
++  VideoFrameAssembler assembler;
++  std::shared_ptr<std::atomic<bool>> cancel;
++  bool running = false;
++};
++
++LockscreenVideoPlayer::LockscreenVideoPlayer() = default;
++
++LockscreenVideoPlayer::~LockscreenVideoPlayer() { stop(); }
++
++bool LockscreenVideoPlayer::start(std::string_view path) {
++  stop();
++  if (path.empty() || !process::commandExists("ffmpeg")) {
++    return false;
++  }
++
++  auto state = std::make_shared<SharedState>(kFrameBytes);
++  state->running = true;
++  std::vector<std::string> args{
++      "ffmpeg",
++      "-hide_banner",
++      "-loglevel",
++      "error",
++      "-nostdin",
++      "-re",
++      "-stream_loop",
++      "-1",
++      "-i",
++      std::string(path),
++      "-vf",
++      "fps=30,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=rgba",
++      "-f",
++      "rawvideo",
++      "-pix_fmt",
++      "rgba",
++      "pipe:1",
++  };
++
++  process::RunCallbacks callbacks;
++  callbacks.stdOut = [state](std::string_view chunk) {
++    std::lock_guard lock(state->mutex);
++    if (!state->cancel->load(std::memory_order_relaxed)) {
++      state->assembler.append(chunk);
++    }
++  };
++  callbacks.stdErr = [](std::string_view) {};
++  callbacks.onExit = [state](process::RunResult) {
++    std::lock_guard lock(state->mutex);
++    state->running = false;
++  };
++
++  process::RunOptions options;
++  options.maxOutputBytes = 0;
++  options.cancel = state->cancel;
++  m_state = state;
++  if (!process::runAsync(args, std::move(callbacks), options)) {
++    state->cancel->store(true, std::memory_order_relaxed);
++    m_state.reset();
++    std::lock_guard lock(state->mutex);
++    state->running = false;
++    return false;
++  }
++  return true;
++}
++
++void LockscreenVideoPlayer::stop() noexcept {
++  auto state = std::exchange(m_state, std::shared_ptr<SharedState>{});
++  if (state != nullptr) {
++    state->cancel->store(true, std::memory_order_relaxed);
++  }
++}
++
++bool LockscreenVideoPlayer::isRunning() const {
++  const auto state = m_state;
++  if (state == nullptr) {
++    return false;
++  }
++  std::lock_guard lock(state->mutex);
++  return state->running && !state->cancel->load(std::memory_order_relaxed);
++}
++
++std::optional<std::vector<std::uint8_t>> LockscreenVideoPlayer::takeLatestFrame() {
++  const auto state = m_state;
++  if (state == nullptr) {
++    return std::nullopt;
++  }
++  std::lock_guard lock(state->mutex);
++  return state->assembler.takeLatest();
++}
++
++} // namespace noctalia::lockscreen
+diff --git a/noctalia-lock-work/src/shell/lockscreen/lockscreen_video_player.h b/src/shell/lockscreen/lockscreen_video_player.h
+new file mode 100644
+index 0000000..834c652
+--- /dev/null
++++ b/src/shell/lockscreen/lockscreen_video_player.h
+@@ -0,0 +1,48 @@
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <string_view>
++#include <vector>
++
++namespace noctalia::lockscreen {
++
++class VideoFrameAssembler {
++public:
++  explicit VideoFrameAssembler(std::size_t frameBytes);
++
++  void append(std::string_view chunk);
++  [[nodiscard]] std::optional<std::vector<std::uint8_t>> takeLatest();
++  [[nodiscard]] std::size_t bufferedBytes() const noexcept;
++
++private:
++  std::size_t m_frameBytes;
++  std::vector<std::uint8_t> m_pending;
++  std::optional<std::vector<std::uint8_t>> m_latest;
++};
++
++class LockscreenVideoPlayer {
++public:
++  static constexpr int kWidth = 1280;
++  static constexpr int kHeight = 720;
++  static constexpr std::size_t kFrameBytes = static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(kHeight) * 4U;
++
++  LockscreenVideoPlayer();
++  ~LockscreenVideoPlayer();
++
++  LockscreenVideoPlayer(const LockscreenVideoPlayer&) = delete;
++  LockscreenVideoPlayer& operator=(const LockscreenVideoPlayer&) = delete;
++
++  [[nodiscard]] bool start(std::string_view path);
++  void stop() noexcept;
++  [[nodiscard]] bool isRunning() const;
++  [[nodiscard]] std::optional<std::vector<std::uint8_t>> takeLatestFrame();
++
++private:
++  struct SharedState;
++  std::shared_ptr<SharedState> m_state;
++};
++
++} // namespace noctalia::lockscreen
+diff --git a/noctalia-lock-work/tests/lockscreen_video_player_test.cpp b/tests/lockscreen_video_player_test.cpp
+new file mode 100644
+index 0000000..d09f646
+--- /dev/null
++++ b/tests/lockscreen_video_player_test.cpp
+@@ -0,0 +1,99 @@
++#include "core/process/process.h"
++#include "shell/lockscreen/lockscreen_video_player.h"
++
++#include <array>
++#include <cassert>
++#include <chrono>
++#include <cstdint>
++#include <filesystem>
++#include <fstream>
++#include <optional>
++#include <string_view>
++#include <thread>
++#include <unordered_set>
++#include <vector>
++
++namespace {
++
++void expectFrame(const std::optional<std::vector<std::uint8_t>>& frame, std::string_view expected) {
++  assert(frame.has_value());
++  const std::vector<std::uint8_t> expectedBytes(expected.begin(), expected.end());
++  assert(*frame == expectedBytes);
++}
++
++void writePpm(const std::filesystem::path& path, const std::array<std::uint8_t, 3>& color) {
++  std::ofstream output(path, std::ios::binary);
++  assert(output);
++  output << "P6\n8 8\n255\n";
++  for (int pixel = 0; pixel < 64; ++pixel) {
++    output.write(reinterpret_cast<const char*>(color.data()), static_cast<std::streamsize>(color.size()));
++  }
++  assert(output.good());
++}
++
++std::uint64_t frameHash(const std::vector<std::uint8_t>& frame) {
++  std::uint64_t hash = 1469598103934665603ULL;
++  for (const std::uint8_t byte : frame) {
++    hash ^= byte;
++    hash *= 1099511628211ULL;
++  }
++  return hash;
++}
++
++void expectDecodedFramesChange() {
++  const auto fixtureDir = std::filesystem::temp_directory_path() / "noctalia-lockscreen-video-test";
++  std::filesystem::remove_all(fixtureDir);
++  std::filesystem::create_directories(fixtureDir);
++  writePpm(fixtureDir / "frame-1.ppm", {255, 0, 0});
++  writePpm(fixtureDir / "frame-2.ppm", {0, 0, 255});
++
++  const auto fixturePath = fixtureDir / "fixture.mp4";
++  const process::RunResult encoded = process::runSync(
++      {
++          "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-framerate", "10", "-i",
++          (fixtureDir / "frame-%d.ppm").string(), "-frames:v", "2", "-c:v", "mpeg4", "-q:v", "2",
++          fixturePath.string(),
++      }
++  );
++  assert(static_cast<bool>(encoded));
++
++  noctalia::lockscreen::LockscreenVideoPlayer player;
++  assert(player.start(fixturePath.string()));
++  std::unordered_set<std::uint64_t> hashes;
++  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
++  while (std::chrono::steady_clock::now() < deadline && hashes.size() < 2) {
++    if (auto frame = player.takeLatestFrame(); frame.has_value()) {
++      assert(frame->size() == noctalia::lockscreen::LockscreenVideoPlayer::kFrameBytes);
++      hashes.insert(frameHash(*frame));
++    }
++    std::this_thread::sleep_for(std::chrono::milliseconds(20));
++  }
++  player.stop();
++  std::filesystem::remove_all(fixtureDir);
++  assert(hashes.size() >= 2);
++}
++
++} // namespace
++
++int main() {
++  noctalia::lockscreen::VideoFrameAssembler assembler(4);
++
++  assembler.append("ab");
++  assert(!assembler.takeLatest().has_value());
++
++  assembler.append("cd");
++  expectFrame(assembler.takeLatest(), "abcd");
++
++  assembler.append("ef");
++  assert(!assembler.takeLatest().has_value());
++  assembler.append("ghij");
++  expectFrame(assembler.takeLatest(), "efgh");
++  assert(assembler.bufferedBytes() == 2);
++
++  assembler.append("aa3333");
++  expectFrame(assembler.takeLatest(), "3333");
++  assert(assembler.bufferedBytes() == 0);
++
++  expectDecodedFramesChange();
++  return 0;
++}

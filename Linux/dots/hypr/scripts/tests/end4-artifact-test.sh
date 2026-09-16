@@ -32,6 +32,9 @@ check_live_wallpaper_contract() {
   local selector="$root/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
   local directory_item="$root/modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml"
   local background="$root/modules/ii/background/Background.qml"
+  local lock_screen="$root/modules/common/panels/lock/LockScreen.qml"
+  local ii_lock_surface="$root/modules/ii/lock/LockSurface.qml"
+  local waffle_lock="$root/modules/waffle/lock/WaffleLock.qml"
   local config="$root/modules/common/Config.qml"
   local surface="$root/modules/ii/background/LiveWallpaperSurface.qml"
   local switchwall="$root/scripts/colors/switchwall.sh"
@@ -151,10 +154,15 @@ check_live_wallpaper_contract() {
   fi
 
   for expected in \
+    'import QtMultimedia' \
     'AnimatedImage' \
+    'MediaPlayer' \
+    'VideoOutput' \
+    'loops: MediaPlayer.Infinite' \
+    'muted: true' \
     'stopLivePlayback' \
     'source = ""' \
-    'switchwall.sh owns video playback through mpvpaper'; do
+    'root.mediaKind === "video"'; do
     if ! grep -Fq "$expected" "$surface"; then
       printf 'FAIL: End4 %s wallpaper renderer is missing %s: %s\n' \
         "$variant" "$expected" "$surface" >&2
@@ -162,11 +170,6 @@ check_live_wallpaper_contract() {
     fi
   done
 
-  if grep -Eq 'MediaPlayer|VideoOutput|AudioOutput|videoPlayer' "$surface"; then
-    printf 'FAIL: End4 %s video has a second QML playback backend: %s\n' \
-      "$variant" "$surface" >&2
-    exit 1
-  fi
   for expected in \
     'mpvpaper -o' \
     'no-audio loop' \
@@ -189,10 +192,48 @@ check_live_wallpaper_contract() {
       exit 1
     fi
   done
-  if ! grep -Fq 'visible: active && bgRoot.wallpaperIsAnimated' "$background"; then
-    printf 'FAIL: End4 %s video backend ownership is not delegated to mpvpaper: %s\n' \
+  if ! grep -Fq 'active: !bgRoot.wallpaperSafetyTriggered && (!bgRoot.wallpaperIsVideo || GlobalStates.screenLocked)' "$background" ||
+    ! grep -Fq 'visible: active && bgRoot.wallpaperIsLive' "$background" ||
+    ! grep -Fq 'path: bgRoot.wallpaperSourcePath' "$background" ||
+    ! grep -Fq '    z: 0' "$background"; then
+    printf 'FAIL: End4 %s lock surface does not own video playback while locked: %s\n' \
       "$variant" "$background" >&2
     exit 1
+  fi
+
+  if ! grep -Fq 'Config.options.lock.useHyprlock && !Wallpapers.isLivePath(root.lockWallpaperPath())' "$lock_screen" ||
+    ! grep -Fq 'function lockWallpaperPath()' "$lock_screen"; then
+    printf 'FAIL: End4 %s can route a live wallpaper through hyprlock: %s\n' \
+      "$variant" "$lock_screen" >&2
+    exit 1
+  fi
+
+  if [ -f "$waffle_lock" ]; then
+    for expected in \
+      'import qs.modules.ii.background' \
+      'LiveWallpaperSurface' \
+      'path: bg.wallpaperPath' \
+      'visible: Wallpapers.isLivePath(bg.wallpaperPath)'; do
+      if ! grep -Fq "$expected" "$waffle_lock"; then
+        printf 'FAIL: End4 %s Waffle lock is missing live wallpaper contract %s: %s\n' \
+          "$variant" "$expected" "$waffle_lock" >&2
+        exit 1
+      fi
+    done
+  fi
+
+  if [ "$variant" = "pC" ]; then
+    for expected in \
+      'import qs.modules.ii.background' \
+      'LiveWallpaperSurface' \
+      'path: niriBackground.wallpaperPath' \
+      'visible: Wallpapers.isLivePath(niriBackground.wallpaperPath)'; do
+      if ! grep -Fq "$expected" "$ii_lock_surface"; then
+        printf 'FAIL: End4 %s niri lock is missing live wallpaper contract %s: %s\n' \
+          "$variant" "$expected" "$ii_lock_surface" >&2
+        exit 1
+      fi
+    done
   fi
   if grep -Fq 'id: previousWallpaper' "$background" &&
     ! sed -n '/id: previousWallpaper/,/^            }/p' "$background" |
