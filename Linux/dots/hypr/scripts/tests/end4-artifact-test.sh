@@ -35,6 +35,7 @@ check_live_wallpaper_contract() {
   local lock_screen="$root/modules/common/panels/lock/LockScreen.qml"
   local session="$root/modules/common/functions/Session.qml"
   local interface_config
+  local lock_entry="$root/modules/ii/lock/Lock.qml"
   local ii_lock_surface="$root/modules/ii/lock/LockSurface.qml"
   local waffle_lock="$root/modules/waffle/lock/WaffleLock.qml"
   local abstract_widget="$root/modules/ii/background/widgets/AbstractBackgroundWidget.qml"
@@ -171,8 +172,11 @@ check_live_wallpaper_contract() {
     'AnimatedImage' \
     'MediaPlayer' \
     'VideoOutput' \
+    'videoPlayer.source = Qt.resolvedUrl(root.path)' \
+    'videoPlayer.play()' \
     'loops: MediaPlayer.Infinite' \
     'muted: true' \
+    'visible: root.active && root.mediaKind === "video" && !root.failed' \
     'stopLivePlayback' \
     'source = ""' \
     'root.mediaKind === "video"'; do
@@ -214,9 +218,11 @@ check_live_wallpaper_contract() {
     exit 1
   fi
 
-  if ! grep -Fq 'Config.options.lock.useHyprlock && !Wallpapers.isLivePath(root.lockWallpaperPath())' "$lock_screen" ||
-    ! grep -Fq 'function lockWallpaperPath()' "$lock_screen"; then
-    printf 'FAIL: End4 %s can route a live wallpaper through hyprlock: %s\n' \
+  local lock_block lock_setting_block
+  lock_block="$(sed -n '/    function lock() {/,/^    }/p' "$lock_screen")"
+  if grep -Fq 'hyprlock' <<<"$lock_block" ||
+    ! grep -Fq 'GlobalStates.screenLocked = true' <<<"$lock_block"; then
+    printf 'FAIL: End4 %s does not always use its native lock screen: %s\n' \
       "$variant" "$lock_screen" >&2
     exit 1
   fi
@@ -234,10 +240,31 @@ check_live_wallpaper_contract() {
     exit 1
   fi
 
-  if ! grep -Fq 'readonly property bool liveWallpaperSelected: Wallpapers.isLivePath(lockWallpaperPath)' "$interface_config" ||
-    ! grep -Fq 'enabled: !liveWallpaperSelected' "$interface_config" ||
-    ! grep -Fq 'Hyprlock is unavailable for live wallpapers' "$interface_config"; then
-    printf 'FAIL: End4 %s exposes an ineffective Hyprlock switch for live wallpapers: %s\n' \
+  lock_setting_block="$(awk '
+    /ConfigSwitch[[:space:]]*\{/ {
+      if (in_block && found) exit
+      in_block = 1
+      found = 0
+      block = $0 ORS
+      next
+    }
+    in_block {
+      block = block $0 ORS
+      if ($0 ~ /water_drop/) found = 1
+    }
+    END {
+      if (found) printf "%s", block
+    }
+  ' "$interface_config")"
+  if [ -z "$lock_setting_block" ] ||
+    ! grep -Fq 'water_drop' <<<"$lock_setting_block" ||
+    ! grep -Eq '^[[:space:]]*text:' <<<"$lock_setting_block" ||
+    ! grep -Fq 'Use QuickShell lock screen (fixed)' <<<"$lock_setting_block" ||
+    ! grep -Fq 'enabled: false' <<<"$lock_setting_block" ||
+    ! grep -Fq 'checked: true' <<<"$lock_setting_block" ||
+    grep -Fq 'Config.options.lock.useHyprlock' <<<"$lock_setting_block" ||
+    grep -Fq 'onCheckedChanged' <<<"$lock_setting_block"; then
+    printf 'FAIL: End4 %s lock selector is not visible but fixed to native QuickShell: %s\n' \
       "$variant" "$interface_config" >&2
     exit 1
   fi
@@ -256,6 +283,30 @@ check_live_wallpaper_contract() {
     done
   fi
 
+  if [ ! -f "$lock_entry" ] ||
+    ! grep -Fq 'lockSurface: LockSurface' "$lock_entry"; then
+    printf 'FAIL: End4 %s secure lock entry does not mount LockSurface: %s\n' \
+      "$variant" "$lock_entry" >&2
+    exit 1
+  fi
+  for expected in \
+    'import qs.modules.ii.background' \
+    'LiveWallpaperSurface' \
+    'visible: !Wallpapers.isLivePath' \
+    'visible: Wallpapers.isLivePath'; do
+    if ! grep -Fq "$expected" "$ii_lock_surface"; then
+      printf 'FAIL: End4 %s secure lock surface is missing direct wallpaper contract %s: %s\n' \
+        "$variant" "$expected" "$ii_lock_surface" >&2
+      exit 1
+    fi
+  done
+  if ! grep -Eq 'source:.*(wallpaperPath|Config\.options\.background\.wallpaperPath)' "$ii_lock_surface" ||
+    ! grep -Eq 'path:.*(wallpaperPath|Config\.options\.background\.wallpaperPath)' "$ii_lock_surface"; then
+    printf 'FAIL: End4 %s secure lock surface does not bind static and live paths directly: %s\n' \
+      "$variant" "$ii_lock_surface" >&2
+    exit 1
+  fi
+
   if [ "$variant" = "pC" ]; then
     for expected in \
       'import qs.modules.ii.background' \
@@ -269,8 +320,10 @@ check_live_wallpaper_contract() {
       fi
     done
     if ! sed -n '/id: lockBackgroundLoader/,/^    }/p' "$ii_lock_surface" |
-      grep -Fq 'active: WM.compositor === "niri"'; then
-      printf 'FAIL: End4 %s Niri lock wallpaper renderer is not compositor-scoped: %s\n' \
+      grep -Fq 'active: true' ||
+      sed -n '/id: lockBackgroundLoader/,/^    }/p' "$ii_lock_surface" |
+        grep -Fq 'active: WM.compositor === "niri"'; then
+      printf 'FAIL: End4 %s secure lock wallpaper renderer is not always active: %s\n' \
         "$variant" "$ii_lock_surface" >&2
       exit 1
     fi

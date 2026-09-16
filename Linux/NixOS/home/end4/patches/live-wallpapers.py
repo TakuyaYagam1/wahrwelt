@@ -385,25 +385,34 @@ def patch_background(root: Path) -> None:
 def patch_lock_dispatch(root: Path, variant: str) -> None:
     path = root / ("ii/modules/common/panels/lock/LockScreen.qml" if (root / "ii").is_dir() else "modules/common/panels/lock/LockScreen.qml")
     text = path.read_text()
-    function_anchor = "    function lock() {\n"
-    if variant == "pc":
-        wallpaper_expression = """        const custom = Config.options.background.lockWall;
-        return custom.length > 0 ? custom : Config.options.background.wallpaperPath;"""
-    else:
-        wallpaper_expression = "        return Config.options.background.wallpaperPath;"
-    function_replacement = f"""    function lockWallpaperPath() {{
-{wallpaper_expression}
-    }}
-
-    function lock() {{
-"""
-    text = replace_once(text, function_anchor, function_replacement, f"live lock path helper in {path}")
-    text = replace_once(
-        text,
-        "        if (Config.options.lock.useHyprlock) {",
-        "        if (Config.options.lock.useHyprlock && !Wallpapers.isLivePath(root.lockWallpaperPath())) {",
-        f"live wallpaper native lock routing in {path}",
+    function_pattern = re.compile(r"(?m)^(?P<indent>[ \t]*)function lock\(\) \{")
+    matches = list(function_pattern.finditer(text))
+    if len(matches) != 1:
+        fail(f"native QuickShell lock dispatcher in {path}: expected one lock function, found {len(matches)}")
+    match = matches[0]
+    brace = text.find("{", match.start(), match.end())
+    depth = 0
+    end = -1
+    for index in range(brace, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                break
+    if end < 0:
+        fail(f"native QuickShell lock dispatcher in {path}: lock function closing brace missing")
+    indent = match.group("indent")
+    replacement = (
+        f"{indent}function lock() {{\n"
+        f"{indent}    // Keep the native QuickShell lock for every wallpaper type.\n"
+        f"{indent}    GlobalStates.screenLocked = true;\n"
+        f"{indent}}}\n"
     )
+    text = text[: match.start()] + replacement + text[end:]
     path.write_text(text)
 
 
@@ -436,38 +445,45 @@ def patch_session_lock(root: Path, variant: str) -> None:
 def patch_lock_setting(root: Path, variant: str) -> None:
     if variant == "pc":
         path = root / "modules/ii/settings/pages/InterfaceConfig.qml"
-        old = """                ConfigSwitch {
-                    buttonIcon: "water_drop"
-                    text: Translation.tr("Use Hyprlock (instead of Quickshell)")
-"""
-        new = """                ConfigSwitch {
-                    readonly property string lockWallpaperPath: Config.options.background.lockWall !== ""
-                        ? Config.options.background.lockWall
-                        : Config.options.background.wallpaperPath
-                    readonly property bool liveWallpaperSelected: Wallpapers.isLivePath(lockWallpaperPath)
-                    buttonIcon: "water_drop"
-                    enabled: !liveWallpaperSelected
-                    text: liveWallpaperSelected
-                        ? Translation.tr("Hyprlock is unavailable for live wallpapers")
-                        : Translation.tr("Use Hyprlock (instead of Quickshell)")
-"""
     else:
         path = root / "ii/modules/settings/InterfaceConfig.qml"
-        old = """        ConfigSwitch {
-            buttonIcon: "water_drop"
-            text: Translation.tr('Use Hyprlock (instead of Quickshell)')
-"""
-        new = """        ConfigSwitch {
-            readonly property string lockWallpaperPath: Config.options.background.wallpaperPath
-            readonly property bool liveWallpaperSelected: Wallpapers.isLivePath(lockWallpaperPath)
-            buttonIcon: "water_drop"
-            enabled: !liveWallpaperSelected
-            text: liveWallpaperSelected
-                ? Translation.tr("Hyprlock is unavailable for live wallpapers")
-                : Translation.tr('Use Hyprlock (instead of Quickshell)')
-"""
     text = path.read_text()
-    path.write_text(replace_once(text, old, new, f"live wallpaper lock setting in {path}"))
+    button_pattern = re.compile(r'(?m)^(?P<indent>[ \t]*)buttonIcon: "water_drop"\s*$')
+    button_matches = list(button_pattern.finditer(text))
+    if len(button_matches) != 1:
+        fail(f"native QuickShell lock setting in {path}: expected one lock switch, found {len(button_matches)}")
+    button_match = button_matches[0]
+    switch_pattern = re.compile(r"(?m)^(?P<indent>[ \t]*)ConfigSwitch \{")
+    switch_matches = [match for match in switch_pattern.finditer(text) if match.start() < button_match.start()]
+    if not switch_matches:
+        fail(f"native QuickShell lock setting in {path}: ConfigSwitch anchor missing")
+    match = switch_matches[-1]
+    indent = match.group("indent")
+    if button_match.group("indent") != f"{indent}    ":
+        fail(f"native QuickShell lock setting in {path}: lock switch indentation drifted")
+    brace = text.find("{", match.start(), match.end())
+    depth = 0
+    end = -1
+    for index in range(brace, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                break
+    if end < 0:
+        fail(f"native QuickShell lock setting in {path}: switch closing brace missing")
+    replacement = f'''{indent}ConfigSwitch {{
+{indent}    buttonIcon: "water_drop"
+{indent}    text: Translation.tr("Use QuickShell lock screen (fixed)")
+{indent}    checked: true
+{indent}    enabled: false
+{indent}}}
+'''
+    path.write_text(text[: match.start()] + replacement + text[end:])
 
 
 def patch_waffle_lock(root: Path) -> None:
@@ -550,6 +566,54 @@ def patch_waffle_lock(root: Path) -> None:
     path.write_text(text)
 
 
+def patch_official_lock_surface(root: Path) -> None:
+    path = root / "ii/modules/ii/lock/LockSurface.qml"
+    text = path.read_text()
+    if "import qs.modules.ii.background\n" not in text:
+        text = replace_once(
+            text,
+            "import qs.modules.common.panels.lock\n",
+            "import qs.modules.common.panels.lock\nimport qs.modules.ii.background\n",
+            f"official live wallpaper import in {path}",
+        )
+
+    wallpaper_surface = """    Item {
+        id: lockWallpaperSurface
+        anchors.fill: parent
+        z: -1
+
+        property string wallpaperPath: Config.options.background.wallpaperPath
+
+        StyledImage {
+            anchors.fill: parent
+            source: Wallpapers.imageSourceFor(lockWallpaperSurface.wallpaperPath)
+            visible: !Wallpapers.isLivePath(lockWallpaperSurface.wallpaperPath)
+            fillMode: Image.PreserveAspectCrop
+        }
+
+        LiveWallpaperSurface {
+            anchors.fill: parent
+            path: lockWallpaperSurface.wallpaperPath
+            fallbackPath: Wallpapers.fallbackFor(path)
+            active: true
+            visible: Wallpapers.isLivePath(lockWallpaperSurface.wallpaperPath)
+        }
+    }
+
+"""
+    marker = "    property bool active: false\n"
+    if text.count("id: lockWallpaperSurface") == 0:
+        text = replace_once(
+            text,
+            marker,
+            marker + "\n" + wallpaper_surface,
+            f"official secure lock wallpaper surface in {path}",
+        )
+    elif text.count("id: lockWallpaperSurface") != 1:
+        fail(f"official secure lock wallpaper surface in {path}: renderer anchor is ambiguous")
+    path.write_text(text)
+
+
 def patch_pc_lock_surface(root: Path) -> None:
     path = root / "modules/ii/lock/LockSurface.qml"
     text = path.read_text()
@@ -559,12 +623,15 @@ def patch_pc_lock_surface(root: Path) -> None:
         "import qs.modules.common.panels.lock\nimport qs.modules.ii.background\n",
         f"live wallpaper import in {path}",
     )
-    text = replace_once(
-        text,
-        "    Loader {\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n",
-        "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n",
-        f"pC lock wallpaper surface activation in {path}",
-    )
+    original_loader = "    Loader {\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n"
+    patched_loader = "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n"
+    active_loader = "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: true\n"
+    if text.count(original_loader) == 1:
+        text = text.replace(original_loader, active_loader, 1)
+    elif text.count(patched_loader) == 1:
+        text = text.replace(patched_loader, active_loader, 1)
+    elif text.count(active_loader) != 1:
+        fail(f"native pC lock wallpaper surface activation in {path}: loader anchor missing or ambiguous")
     old = """        sourceComponent: Item {
             anchors.fill: parent
 
@@ -615,7 +682,10 @@ def patch_pc_lock_surface(root: Path) -> None:
             }
         }
 """
-    text = replace_once(text, old, new, f"pC lock live wallpaper in {path}")
+    if text.count(old) == 1:
+        text = text.replace(old, new, 1)
+    elif text.count(new) != 1:
+        fail(f"pC lock live wallpaper in {path}: background source anchor missing or ambiguous")
     path.write_text(text)
 
 
@@ -805,7 +875,9 @@ def main() -> int:
     patch_session_lock(root, args.variant)
     patch_lock_setting(root, args.variant)
     patch_waffle_lock(root)
-    if args.variant == "pc":
+    if args.variant == "official":
+        patch_official_lock_surface(root)
+    else:
         patch_pc_lock_surface(root)
     patch_image_consumers(root, args.variant)
     patch_appearance(root)
