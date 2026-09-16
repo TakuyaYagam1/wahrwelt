@@ -33,6 +33,8 @@ check_live_wallpaper_contract() {
   local directory_item="$root/modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml"
   local background="$root/modules/ii/background/Background.qml"
   local lock_screen="$root/modules/common/panels/lock/LockScreen.qml"
+  local session="$root/modules/common/functions/Session.qml"
+  local interface_config
   local ii_lock_surface="$root/modules/ii/lock/LockSurface.qml"
   local waffle_lock="$root/modules/waffle/lock/WaffleLock.qml"
   local abstract_widget="$root/modules/ii/background/widgets/AbstractBackgroundWidget.qml"
@@ -45,6 +47,12 @@ check_live_wallpaper_contract() {
   local first_frame="$root/scripts/wallpapers/first-frame-thumbnails.sh"
   local reconcile="$root/scripts/wallpapers/video-backend-reconcile.sh"
   local format
+
+  if [ "$variant" = "Official" ]; then
+    interface_config="$root/modules/settings/InterfaceConfig.qml"
+  else
+    interface_config="$root/modules/ii/settings/pages/InterfaceConfig.qml"
+  fi
 
   # shellcheck disable=SC2016
   if grep -Fq '"${validateDirProc.nicePath}"' "$service" ||
@@ -196,11 +204,11 @@ check_live_wallpaper_contract() {
       exit 1
     fi
   done
-  if ! grep -Fq 'active: !bgRoot.wallpaperSafetyTriggered && !GlobalStates.screenLocked && !bgRoot.wallpaperIsVideo' "$background" ||
+  if ! grep -Fq 'active: !bgRoot.wallpaperSafetyTriggered && (!bgRoot.wallpaperIsVideo || GlobalStates.screenLocked)' "$background" ||
     ! grep -Fq 'visible: active && bgRoot.wallpaperIsLive' "$background" ||
     ! grep -Fq 'path: bgRoot.wallpaperSourcePath' "$background" ||
     ! grep -Fq '    z: 0' "$background"; then
-    printf 'FAIL: End4 %s lock surface does not own video playback while locked: %s\n' \
+    printf 'FAIL: End4 %s Hyprland background does not own live playback while locked: %s\n' \
       "$variant" "$background" >&2
     exit 1
   fi
@@ -209,6 +217,27 @@ check_live_wallpaper_contract() {
     ! grep -Fq 'function lockWallpaperPath()' "$lock_screen"; then
     printf 'FAIL: End4 %s can route a live wallpaper through hyprlock: %s\n' \
       "$variant" "$lock_screen" >&2
+    exit 1
+  fi
+
+  local lock_config="ii"
+  if [ "$variant" = "pC" ]; then
+    lock_config="end4-pC"
+  fi
+  if ! sed -n '/    function lock() {/,/^    }/p' "$session" |
+      grep -Fq "[\"qs\", \"-c\", \"$lock_config\", \"ipc\", \"call\", \"lock\", \"activate\"]" ||
+    sed -n '/    function lock() {/,/^    }/p' "$session" |
+      grep -Fq 'loginctl'; then
+    printf 'FAIL: End4 %s session menu bypasses the configured lock dispatcher: %s\n' \
+      "$variant" "$session" >&2
+    exit 1
+  fi
+
+  if ! grep -Fq 'readonly property bool liveWallpaperSelected: Wallpapers.isLivePath(lockWallpaperPath)' "$interface_config" ||
+    ! grep -Fq 'enabled: !liveWallpaperSelected' "$interface_config" ||
+    ! grep -Fq 'Hyprlock is unavailable for live wallpapers' "$interface_config"; then
+    printf 'FAIL: End4 %s exposes an ineffective Hyprlock switch for live wallpapers: %s\n' \
+      "$variant" "$interface_config" >&2
     exit 1
   fi
 
@@ -239,8 +268,8 @@ check_live_wallpaper_contract() {
       fi
     done
     if ! sed -n '/id: lockBackgroundLoader/,/^    }/p' "$ii_lock_surface" |
-      grep -Fq 'active: true'; then
-      printf 'FAIL: End4 %s lock wallpaper renderer is disabled on Hyprland: %s\n' \
+      grep -Fq 'active: WM.compositor === "niri"'; then
+      printf 'FAIL: End4 %s Niri lock wallpaper renderer is not compositor-scoped: %s\n' \
         "$variant" "$ii_lock_surface" >&2
       exit 1
     fi

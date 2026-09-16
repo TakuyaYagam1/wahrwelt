@@ -243,7 +243,7 @@ def patch_background(root: Path) -> None:
         f"{indent}    z: 0\n"
         f"{indent}    path: bgRoot.wallpaperSourcePath\n"
         f"{indent}    fallbackPath: Wallpapers.fallbackFor(path)\n"
-        f"{indent}    active: !bgRoot.wallpaperSafetyTriggered && !GlobalStates.screenLocked && !bgRoot.wallpaperIsVideo\n"
+        f"{indent}    active: !bgRoot.wallpaperSafetyTriggered && (!bgRoot.wallpaperIsVideo || GlobalStates.screenLocked)\n"
         f"{indent}    visible: active && bgRoot.wallpaperIsLive\n"
         f"{indent}}}\n\n"
     )
@@ -351,6 +351,69 @@ def patch_lock_dispatch(root: Path, variant: str) -> None:
     path.write_text(text)
 
 
+def patch_session_lock(root: Path, variant: str) -> None:
+    path = root / ("ii/modules/common/functions/Session.qml" if (root / "ii").is_dir() else "modules/common/functions/Session.qml")
+    text = path.read_text()
+    if variant == "pc":
+        old = """    function lock() {
+        if (WM.compositor === "niri") {
+            Quickshell.execDetached(["qs", "-c", "end4-pC", "ipc", "call", "lock", "activate"]);
+        } else {
+            Quickshell.execDetached(["loginctl", "lock-session"]);
+        }
+    }
+"""
+        config_name = "end4-pC"
+    else:
+        old = """    function lock() {
+        Quickshell.execDetached(["loginctl", "lock-session"]);
+    }
+"""
+        config_name = "ii"
+    new = f"""    function lock() {{
+        Quickshell.execDetached(["qs", "-c", "{config_name}", "ipc", "call", "lock", "activate"]);
+    }}
+"""
+    path.write_text(replace_once(text, old, new, f"session lock dispatcher in {path}"))
+
+
+def patch_lock_setting(root: Path, variant: str) -> None:
+    if variant == "pc":
+        path = root / "modules/ii/settings/pages/InterfaceConfig.qml"
+        old = """                ConfigSwitch {
+                    buttonIcon: "water_drop"
+                    text: Translation.tr("Use Hyprlock (instead of Quickshell)")
+"""
+        new = """                ConfigSwitch {
+                    readonly property string lockWallpaperPath: Config.options.background.lockWall !== ""
+                        ? Config.options.background.lockWall
+                        : Config.options.background.wallpaperPath
+                    readonly property bool liveWallpaperSelected: Wallpapers.isLivePath(lockWallpaperPath)
+                    buttonIcon: "water_drop"
+                    enabled: !liveWallpaperSelected
+                    text: liveWallpaperSelected
+                        ? Translation.tr("Hyprlock is unavailable for live wallpapers")
+                        : Translation.tr("Use Hyprlock (instead of Quickshell)")
+"""
+    else:
+        path = root / "ii/modules/settings/InterfaceConfig.qml"
+        old = """        ConfigSwitch {
+            buttonIcon: "water_drop"
+            text: Translation.tr('Use Hyprlock (instead of Quickshell)')
+"""
+        new = """        ConfigSwitch {
+            readonly property string lockWallpaperPath: Config.options.background.wallpaperPath
+            readonly property bool liveWallpaperSelected: Wallpapers.isLivePath(lockWallpaperPath)
+            buttonIcon: "water_drop"
+            enabled: !liveWallpaperSelected
+            text: liveWallpaperSelected
+                ? Translation.tr("Hyprlock is unavailable for live wallpapers")
+                : Translation.tr('Use Hyprlock (instead of Quickshell)')
+"""
+    text = path.read_text()
+    path.write_text(replace_once(text, old, new, f"live wallpaper lock setting in {path}"))
+
+
 def patch_waffle_lock(root: Path) -> None:
     path = root / ("ii/modules/waffle/lock/WaffleLock.qml" if (root / "ii").is_dir() else "modules/waffle/lock/WaffleLock.qml")
     if not path.is_file():
@@ -443,7 +506,7 @@ def patch_pc_lock_surface(root: Path) -> None:
     text = replace_once(
         text,
         "    Loader {\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n",
-        "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: true\n",
+        "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n",
         f"pC lock wallpaper surface activation in {path}",
     )
     old = """        sourceComponent: Item {
@@ -682,6 +745,8 @@ def main() -> int:
     patch_directory_item(root)
     patch_background(root)
     patch_lock_dispatch(root, args.variant)
+    patch_session_lock(root, args.variant)
+    patch_lock_setting(root, args.variant)
     patch_waffle_lock(root)
     if args.variant == "pc":
         patch_pc_lock_surface(root)
