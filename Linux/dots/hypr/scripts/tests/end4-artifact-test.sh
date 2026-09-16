@@ -43,6 +43,7 @@ check_live_wallpaper_contract() {
   local config="$root/modules/common/Config.qml"
   local surface="$root/modules/ii/background/LiveWallpaperSurface.qml"
   local switchwall="$root/scripts/colors/switchwall.sh"
+  local categorizer="$root/scripts/ai/gemini-categorize-wallpaper.sh"
   local media_index="$root/scripts/wallpapers/media-index.py"
   local first_frame="$root/scripts/wallpapers/first-frame-thumbnails.sh"
   local reconcile="$root/scripts/wallpapers/video-backend-reconcile.sh"
@@ -418,6 +419,7 @@ PY
   run_end4_safe_argv_simulation "$service"
   run_end4_metadata_filter_contract "$service"
   run_end4_media_sort_simulation "$media_index"
+  run_end4_video_ai_source_simulation "$categorizer"
   run_end4_video_backend_simulation "$reconcile" "$switchwall"
 }
 
@@ -520,6 +522,61 @@ run_end4_media_sort_simulation() {
   done
   rm -rf -- "$fixture"
   printf 'OK End4 media sort modes and custom order: %s\n' "$media_index"
+}
+
+run_end4_video_ai_source_simulation() {
+  local categorizer="$1"
+  local fixture fakebin trace source output frame magick_input
+  fixture="$(mktemp -d)"
+  fakebin="$fixture/bin"
+  trace="$fixture/trace"
+  source="$fixture/wallpaper.mp4"
+  mkdir -p "$fakebin" "$fixture/runtime"
+  printf 'video' >"$source"
+
+  printf '#!%s\n' "$(command -v bash)" >"$fakebin/ffmpeg"
+  cat >>"$fakebin/ffmpeg" <<'EOF'
+set -euo pipefail
+output="${!#}"
+printf 'ffmpeg-source=%s\nffmpeg-output=%s\n' "$END4_TEST_SOURCE" "$output" >>"$END4_TEST_TRACE"
+printf 'frame' >"$output"
+EOF
+  printf '#!%s\n' "$(command -v bash)" >"$fakebin/magick"
+  cat >>"$fakebin/magick" <<'EOF'
+set -euo pipefail
+printf 'magick-input=%s\n' "$1" >>"$END4_TEST_TRACE"
+EOF
+  printf '#!%s\n' "$(command -v bash)" >"$fakebin/secret-tool"
+  cat >>"$fakebin/secret-tool" <<'EOF'
+printf '%s\n' '{"apiKeys":{"gemini":"test"}}'
+EOF
+  printf '#!%s\n' "$(command -v bash)" >"$fakebin/base64"
+  cat >>"$fakebin/base64" <<'EOF'
+if [ "${1:-}" = "--version" ]; then
+  printf '%s\n' 'base64 (GNU coreutils)'
+else
+  printf '%s' 'ZnJhbWU='
+fi
+EOF
+  printf '#!%s\n' "$(command -v bash)" >"$fakebin/curl"
+  cat >>"$fakebin/curl" <<'EOF'
+printf '%s\n' '{"candidates":[{"content":{"parts":[{"text":"anime"}]}}]}'
+EOF
+  chmod +x "$fakebin"/*
+
+  output="$(PATH="$fakebin:$PATH" XDG_RUNTIME_DIR="$fixture/runtime" \
+    END4_TEST_TRACE="$trace" END4_TEST_SOURCE="$source" \
+    "$categorizer" "$source")"
+  frame="$(sed -n 's/^ffmpeg-output=//p' "$trace")"
+  magick_input="$(sed -n 's/^magick-input=//p' "$trace")"
+  if [ "$output" != anime ] || [ -z "$frame" ] || [ "$magick_input" != "$frame" ] ||
+    [ "$magick_input" = "$source" ]; then
+    rm -rf -- "$fixture"
+    printf 'FAIL: End4 AI categorizer decoded a video as an image: %s\n' "$categorizer" >&2
+    exit 1
+  fi
+  rm -rf -- "$fixture"
+  printf 'OK End4 AI categorizer extracts one video frame: %s\n' "$categorizer"
 }
 
 run_end4_video_backend_simulation() {

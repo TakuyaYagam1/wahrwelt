@@ -70,6 +70,53 @@ def install_runtime_helpers(root: Path) -> None:
     shutil.copy2(renderer_source, renderer_target)
 
 
+def patch_gemini_categorizer(root: Path) -> None:
+    relative = (
+        "ii/scripts/ai/gemini-categorize-wallpaper.sh"
+        if (root / "ii").is_dir()
+        else "scripts/ai/gemini-categorize-wallpaper.sh"
+    )
+    path = root / relative
+    text = path.read_text()
+    old = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
+
+# Resize image for speed
+mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
+magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
+'''
+    new = '''WORK_DIR="${XDG_RUNTIME_DIR:-/tmp}/quickshell/ai"
+mkdir -p "$WORK_DIR"
+RESIZED_IMG_PATH="$(mktemp "$WORK_DIR/wallpaper.XXXXXX.jpg")"
+SOURCE_FRAME_PATH=""
+
+cleanup() {
+    rm -f -- "$RESIZED_IMG_PATH"
+    if [[ -n "$SOURCE_FRAME_PATH" ]]; then
+        rm -f -- "$SOURCE_FRAME_PATH"
+    fi
+}
+trap cleanup EXIT
+
+case "${SOURCE_IMG_PATH##*.}" in
+    mp4|webm|mkv|avi|mov)
+        SOURCE_FRAME_PATH="$(mktemp "$WORK_DIR/frame.XXXXXX.jpg")"
+        if ! ffmpeg -nostdin -loglevel error -y -i "$SOURCE_IMG_PATH" -frames:v 1 "$SOURCE_FRAME_PATH"; then
+            echo "Failed to extract a video frame: $SOURCE_IMG_PATH" >&2
+            exit 1
+        fi
+        SOURCE_IMG_PATH="$SOURCE_FRAME_PATH"
+        ;;
+esac
+
+# Resize image for speed
+if ! magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"; then
+    echo "Failed to resize wallpaper: $SOURCE_IMG_PATH" >&2
+    exit 1
+fi
+'''
+    path.write_text(replace_once(text, old, new, f"video-safe AI categorizer in {path}"))
+
+
 SERVICE_SHA256 = {
     "official": "2fae0e588adb47ffbbf07b8ad49ea74125759080c2bb804a6d93c9f1c334b966",
     "pc": "8bb36d0ee14633c8bd25fc62741264e61f63d4f5e180389048562ea19fa205b6",
@@ -749,6 +796,7 @@ def main() -> int:
 
     apply_anchor_patch(root, args.patch, "// End4 live wallpaper contract anchor.")
     install_runtime_helpers(root)
+    patch_gemini_categorizer(root)
     patch_service(root, args.variant)
     patch_selector(root)
     patch_directory_item(root)
