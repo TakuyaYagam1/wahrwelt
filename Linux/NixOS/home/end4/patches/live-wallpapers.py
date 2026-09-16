@@ -299,6 +299,15 @@ def patch_background(root: Path) -> None:
                 return
             }
             bgRoot.videoRevealed = false
+            if (bgRoot.currentWallpaperSource === "") {
+                bgRoot.transitionPending = false
+                wallpaper.source = wallpaperPath
+                previousWallpaper.source = wallpaperPath
+                bgRoot.currentWallpaperSource = wallpaperPath
+                bgRoot.previousWallpaperSource = ""
+                bgRoot.transitionProgress = 1.0
+                return
+            }
 """
         text = replace_once(
             text,

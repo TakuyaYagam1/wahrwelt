@@ -312,7 +312,7 @@ check_live_wallpaper_contract() {
   fi
 
   if grep -Fq 'property bool videoRevealed:' "$background"; then
-    local startup_block wallpaper_change_block
+    local startup_block wallpaper_change_block static_recovery_block
     startup_block="$(sed -n '/Component.onCompleted: {/,/^        }/p' "$background")"
     wallpaper_change_block="$(sed -n '/onWallpaperPathChanged: {/,/^        }/p' "$background")"
 
@@ -328,6 +328,21 @@ check_live_wallpaper_contract() {
           exit 1
         fi
       done
+    done
+
+    static_recovery_block="$(sed -n '/if (bgRoot.currentWallpaperSource === "") {/,/^            }/p' "$background")"
+    for expected in \
+      'wallpaper.source = wallpaperPath' \
+      'previousWallpaper.source = wallpaperPath' \
+      'bgRoot.currentWallpaperSource = wallpaperPath' \
+      'bgRoot.transitionPending = false' \
+      'bgRoot.transitionProgress = 1.0' \
+      'return'; do
+      if ! grep -Fq "$expected" <<<"$static_recovery_block"; then
+        printf 'FAIL: End4 %s live-to-static recovery is missing %s: %s\n' \
+          "$variant" "$expected" "$background" >&2
+        exit 1
+      fi
     done
   fi
 
