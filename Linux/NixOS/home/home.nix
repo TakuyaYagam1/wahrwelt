@@ -141,6 +141,7 @@ in
   # inside the HM evaluation as well.
   stylix.overlays.enable = false;
   stylix.targets.neovim.enable = false;
+  stylix.targets.rofi.enable = false;
 
   xdg.configFile = lib.genAttrs generatedConfigFiles (_: {
     force = true;

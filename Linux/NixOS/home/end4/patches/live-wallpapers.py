@@ -721,11 +721,22 @@ def patch_image_consumers(root: Path, variant: str) -> None:
             "                        source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
             "pC settings wallpaper preview fallback",
         )
-        replace(
-            "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml",
-            "                source: Config.options.background.wallpaperPath",
-            "                source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
-            "pC selector blur fallback",
+        selector_path = tree / "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
+        selector_text = selector_path.read_text()
+        selector_start, selector_end = qml_property_block(
+            selector_text,
+            "            StyledImage {\n                id: wallpaperBgImage",
+            f"pC selector blur fallback in {selector_path}",
+        )
+        selector_block = selector_text[selector_start:selector_end]
+        selector_block = replace_once(
+            selector_block,
+            "Config.options.background.wallpaperPath",
+            "Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+            f"pC selector blur fallback in {selector_path}",
+        )
+        selector_path.write_text(
+            selector_text[:selector_start] + selector_block + selector_text[selector_end:]
         )
         replace(
             "modules/ii/background/NiriBackdrop.qml",
@@ -745,12 +756,46 @@ def patch_image_consumers(root: Path, variant: str) -> None:
             "                                    source: Config.options.sidebar.bannerImage !== \"\" \n                                        ? Config.options.sidebar.bannerImage \n                                        : Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
             "pC sidebar banner fallback",
         )
-        replace(
-            "modules/ii/background/widgets/usercard/UserCardWidget.qml",
-            '                    property string effectiveSource: "file://" + (GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath)',
-            '                    property string rawSource: GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath\n                    property url effectiveSource: Qt.resolvedUrl(Wallpapers.imageSourceFor(rawSource))',
-            "pC user card wallpaper fallback",
+        usercard_path = tree / "modules/ii/background/widgets/usercard/UserCardWidget.qml"
+        usercard_text = usercard_path.read_text()
+        usercard_sources = (
+            (
+                '                    property string effectiveSource: "file://" + (GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath)',
+                '                    property string rawSource: GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath\n                    property url effectiveSource: Qt.resolvedUrl(Wallpapers.imageSourceFor(rawSource))',
+            ),
+            (
+                '                    property string effectiveSource: Config.options.background.widgets.blurWidgets ? "" : "file://" + (GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath)',
+                '                    property string rawSource: GlobalStates.screenLocked && Config.options.background.lockWall !== ""\n                        ? Config.options.background.lockWall\n                        : Config.options.background.wallpaperPath\n                    property url effectiveSource: Config.options.background.widgets.blurWidgets\n                        ? ""\n                        : Qt.resolvedUrl(Wallpapers.imageSourceFor(rawSource))',
+            ),
         )
+        usercard_matches = [
+            replacement for replacement in usercard_sources if usercard_text.count(replacement[0]) == 1
+        ]
+        if len(usercard_matches) != 1:
+            fail(
+                f"pC user card wallpaper fallback in {usercard_path}: "
+                f"expected one supported source expression, found {len(usercard_matches)}"
+            )
+        usercard_text = usercard_text.replace(*usercard_matches[0], 1)
+
+        wide_banner = (
+            "                            source: Config.options.sidebar.bannerImage "
+            "|| Config.options.background.wallpaperPath"
+        )
+        wide_banner_count = usercard_text.count(wide_banner)
+        if wide_banner_count > 1:
+            fail(
+                f"pC wide user card wallpaper fallback in {usercard_path}: "
+                f"expected at most one source expression, found {wide_banner_count}"
+            )
+        if wide_banner_count == 1:
+            usercard_text = usercard_text.replace(
+                wide_banner,
+                "                            source: Config.options.sidebar.bannerImage "
+                "|| Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+                1,
+            )
+        usercard_path.write_text(usercard_text)
         return
 
     replace(

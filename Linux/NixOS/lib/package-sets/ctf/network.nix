@@ -12,7 +12,7 @@ with pkgs-stable;
   assetfinder
   atftp
   bettercap
-  bloodhound
+  bloodhound-ce
   cdncheck
   certgraph
   chisel
