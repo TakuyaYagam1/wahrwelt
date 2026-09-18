@@ -306,13 +306,12 @@
      Process {
 --- a/modules/background/Wallpaper.qml
 +++ b/modules/background/Wallpaper.qml
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  pragma ComponentBehavior: Bound
 
 +import QtMultimedia
  import QtQuick
  import Caelestia.Config
- import qs.components
 @@ -12,34 +13,77 @@
      id: root
 
@@ -409,15 +408,7 @@
          sourceComponent: StyledRect {
              color: Colours.palette.m3surfaceContainer
 
-@@ -89,7 +133,6 @@
-                             id: selectWallText
-
-                             anchors.centerIn: parent
--
-                             text: qsTr("Set it now!")
-                             color: Colours.palette.m3onPrimary
-                             font: Tokens.font.body.large
-@@ -101,33 +144,80 @@
+@@ -101,33 +145,80 @@
      }
 
      Component {
@@ -557,15 +548,9 @@
                  const dpr = (QsWindow.window as QsWindow)?.devicePixelRatio ?? 1;
 --- a/modules/nexus/pages/wallandstyle/WallpaperSelect.qml
 +++ b/modules/nexus/pages/wallandstyle/WallpaperSelect.qml
-@@ -45,7 +45,7 @@
-
-                     title: qsTr("Select an image")
-                     filterLabel: qsTr("Image files")
+@@ -48 +48 @@
 -                    filters: Images.validImageExtensions
 +                    filters: Images.validImageExtensions.concat(["*.gif", "*.webp", "*.mp4", "*.webm", "*.mkv", "*.mov", "*.avi"])
-                     onAccepted: path => {
-                         Wallpapers.setWallpaper(path);
-                         root.nState.closeSubPage();
 @@ -69,6 +69,24 @@
              }
          }
