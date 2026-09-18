@@ -139,9 +139,11 @@ in
 
   # When HM uses the system package set, Stylix must not install package overlays
   # inside the HM evaluation as well.
-  stylix.overlays.enable = false;
-  stylix.targets.neovim.enable = false;
-  stylix.targets.rofi.enable = false;
+  stylix = {
+    overlays.enable = false;
+    targets.neovim.enable = false;
+    targets.rofi.enable = false;
+  };
 
   xdg.configFile = lib.genAttrs generatedConfigFiles (_: {
     force = true;
