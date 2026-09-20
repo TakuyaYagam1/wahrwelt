@@ -9,12 +9,11 @@
 let
   cfg = config.wahrwelt;
   packageSets = import ../lib/package-sets.nix { inherit lib pkgs; };
+  presetPackages = packageSets.forPreset (wahrweltLib.presets.fromConfig cfg);
 in
 {
   config = wahrweltLib.mkIfPresetOrMore "developer" cfg {
-    environment.systemPackages =
-      packageSets.development.tools
-      ++ lib.optionals (wahrweltLib.presets.personal cfg) packageSets.development.personalTools;
+    environment.systemPackages = presetPackages.developmentPackages;
 
     environment.variables = {
       PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";

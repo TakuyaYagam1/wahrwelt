@@ -11,18 +11,17 @@
   ];
   containers = [ ];
   desktop = with pkgs; [
-    firefox
     spotify
     telegram-desktop
     vesktop
-    libreoffice-qt-stable
+    vscode
+    wpsoffice
     zathura
     loupe
     mpv
     obsidian
   ];
   dev = with pkgs; [
-    vscode
     claude-desktop
     claude-code
     codex
@@ -30,7 +29,6 @@
   ];
   personal = with pkgs; [
     happ
-    wpsoffice
     onlyoffice-desktopeditors
     anytype
     insomnia

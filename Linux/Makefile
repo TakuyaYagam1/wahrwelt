@@ -114,6 +114,10 @@ nix-flake-check: ## Run nix flake check (full eval)
 nix-build: ## Delegate to installer Makefile nix-build target
 	$(MAKE) -C $(INSTALLER_DIR) nix-build
 
+.PHONY: nix-package-preset-contract
+nix-package-preset-contract: ## Check cumulative package presets and desktop file handlers
+	$(MAKE) -C $(INSTALLER_DIR) nix-package-preset-contract
+
 ##@ Dotfiles (shell, fish, lua, json)
 
 .PHONY: lint-shell

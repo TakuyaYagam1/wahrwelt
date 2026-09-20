@@ -34,13 +34,13 @@ let
   ) wallpaperNames;
   generatedConfigFiles = [
     "foot/foot.ini"
-    "btop/btop.conf"
     "gtk-3.0/gtk.css"
     "gtk-4.0/gtk.css"
     "cava/config"
     "qt5ct/qt5ct.conf"
     "qt6ct/qt6ct.conf"
-  ];
+  ]
+  ++ lib.optionals desktopOrMore [ "btop/btop.conf" ];
   coreImports = [
     inputs.stylix.homeModules.stylix
     ./stylix.nix
@@ -115,7 +115,7 @@ in
     );
   };
 
-  programs.neovim = {
+  programs.neovim = lib.mkIf desktopOrMore {
     enable = true;
     package = wahrweltPkgs.neovim or pkgs.neovim;
     withRuby = true;

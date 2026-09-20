@@ -124,6 +124,11 @@ jobs:
           CI_PROFILE_BIN: ${{ steps.tools.outputs.profile_bin }}
         run: PATH="$CI_PROFILE_BIN:$PATH" make -C Linux test-go
 
+      - name: Verify cumulative package presets
+        env:
+          CI_PROFILE_BIN: ${{ steps.tools.outputs.profile_bin }}
+        run: PATH="$CI_PROFILE_BIN:$PATH" make -C Linux nix-package-preset-contract
+
       - name: Verify least-privilege container runtime contract
         env:
           CI_PROFILE_BIN: ${{ steps.tools.outputs.profile_bin }}

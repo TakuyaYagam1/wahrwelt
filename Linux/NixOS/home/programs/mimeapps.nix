@@ -7,7 +7,6 @@
 
 let
   desktopOrMore = wahrweltLib.presets.desktopOrMore wahrwelt;
-  developerOrMore = wahrweltLib.presets.developerOrMore wahrwelt;
 
   browser = [ "zen.desktop" ];
   editor = [ "code.desktop" ];
@@ -183,7 +182,7 @@ let
     // writerDefaults
     // spreadsheetDefaults
     // presentationDefaults
-    // lib.optionalAttrs developerOrMore codeDefaults
+    // codeDefaults
     // documentDefaults;
 in
 {

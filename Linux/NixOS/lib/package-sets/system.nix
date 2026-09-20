@@ -33,7 +33,6 @@ in
     vim
     git
     kitty
-    neovim
     fish
     bash
     curl
@@ -69,9 +68,7 @@ in
     eza
     zoxide
     atuin
-    btop
     htop
-    neohtop
     # Glances 4.5.5's localhost HTTP/XML-RPC integration tests are not
     # sandbox-safe in the current nixpkgs build environment.
     (glances.overridePythonAttrs (_: {
@@ -80,6 +77,9 @@ in
   ];
   systemDesktop =
     (with pkgs; [
+      neovim
+      btop
+      neohtop
       steam-run
       networkmanagerapplet
       libnotify

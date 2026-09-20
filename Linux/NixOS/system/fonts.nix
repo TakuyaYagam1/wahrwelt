@@ -15,13 +15,14 @@ let
       pkgs-stable
       ;
   };
+  presetPackages = packageSets.forPreset (wahrweltLib.presets.fromConfig config.wahrwelt);
 in
 {
   config = wahrweltLib.mkIfPresetOrMore "desktop" config.wahrwelt {
     fonts = {
       enableDefaultPackages = true;
 
-      packages = packageSets.fonts.desktop;
+      packages = presetPackages.fontPackages;
 
       fontconfig = {
         defaultFonts = {

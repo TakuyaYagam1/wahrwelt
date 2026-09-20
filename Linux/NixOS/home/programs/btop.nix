@@ -1,7 +1,12 @@
-_:
+{
+  lib,
+  wahrwelt,
+  wahrweltLib,
+  ...
+}:
 
 {
-  programs.btop = {
+  programs.btop = lib.mkIf (wahrweltLib.presets.desktopOrMore wahrwelt) {
     enable = true;
     settings = {
       theme_background = false;

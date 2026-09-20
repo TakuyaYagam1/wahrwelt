@@ -7,44 +7,64 @@
 }:
 
 let
-  systemSets = import ./package-sets/system.nix {
+  systemSource = import ./package-sets/system.nix {
     inherit pkgs pkgs-stable;
   };
-  devSets = import ./package-sets/dev.nix {
+  developmentSource = import ./package-sets/dev.nix {
     inherit pkgs;
   };
-  runtimeSets = import ./package-sets/runtime.nix {
+  runtimeSource = import ./package-sets/runtime.nix {
     inherit lib pkgs;
   };
-  fontSets = import ./package-sets/fonts.nix {
+  fontSource = import ./package-sets/fonts.nix {
     inherit pkgs-stable;
   };
   ctfSets = import ./package-sets/ctf.nix {
-    inherit pkgs pkgs-stable inputs system;
+    inherit
+      pkgs
+      pkgs-stable
+      inputs
+      system
+      ;
   };
-in
-{
-  system = {
-    base = systemSets.systemBase;
-    desktop = systemSets.systemDesktop;
-    developer = systemSets.systemDeveloper;
-    personal = systemSets.systemPersonal;
-    personalStable = systemSets.systemPersonalStable;
+  systemPackages = {
+    base = systemSource.systemBase;
+    desktop = systemSource.systemDesktop;
+    developer = systemSource.systemDeveloper;
+    personal = systemSource.systemPersonal;
+    personalStable = systemSource.systemPersonalStable;
   };
   development = {
-    tools = devSets.devTools;
-    personalTools = devSets.personalDevTools;
+    tools = developmentSource.devTools;
+    personalTools = developmentSource.personalDevTools;
   };
   runtime = {
-    inherit (runtimeSets) waylandCore waylandTools;
+    inherit (runtimeSource) waylandCore waylandTools;
     end4 = {
-      binPackages = runtimeSets.end4BinPackages;
-      qtPackages = runtimeSets.end4QtPackages;
+      binPackages = runtimeSource.end4BinPackages;
+      qtPackages = runtimeSource.end4QtPackages;
     };
   };
   fonts = {
-    desktop = fontSets.desktopFonts;
+    desktop = fontSource.desktopFonts;
   };
+  homeSets = import ./package-sets/home.nix { inherit pkgs pkgs-stable; };
+  presetLayers = import ./package-sets/preset-layers.nix {
+    systemSets = systemPackages;
+    developmentSets = development;
+    runtimeSets = runtime;
+    fontSets = fonts;
+    inherit homeSets;
+  };
+in
+{
+  inherit
+    development
+    fonts
+    runtime
+    ;
+  system = systemPackages;
+  inherit (presetLayers) deltas forPreset presets;
   ctf = {
     cloud = ctfSets.ctfCloud;
     crypto = ctfSets.ctfCrypto;

@@ -181,6 +181,10 @@ nix-package-eval: ## Eval Wahrwelt and its supported mysetup package compatibili
 	nix eval $(NIX_CACHE_ARGS) --no-write-lock-file --impure --raw --expr 'let flake = builtins.getFlake "path:$(REPO_ROOT)?dir=Linux/NixOS"; in flake.packages.x86_64-linux.wahrwelt.pname' >/dev/null
 	nix eval $(NIX_CACHE_ARGS) --no-write-lock-file --impure --raw --expr 'let flake = builtins.getFlake "path:$(REPO_ROOT)?dir=Linux/NixOS"; in flake.packages.x86_64-linux.mysetup.pname' >/dev/null
 
+.PHONY: nix-package-preset-contract
+nix-package-preset-contract: ## Check cumulative package presets and desktop file handlers
+	cd $(REPO_ROOT) && bash Linux/installer/scripts/nix-package-preset-test.sh
+
 NIX_HM_ENV := NIXOS_DIR='$(NIXOS_DIR)' \
 	NIX_CACHE_SUBSTITUTERS='$(NIX_CACHE_SUBSTITUTERS)' \
 	NIX_CACHE_KEYS='$(NIX_CACHE_KEYS)'
@@ -252,6 +256,7 @@ check: ## Run the full local verification suite and remove build artefacts
 	if [ $$status -eq 0 ]; then $(MAKE) test || status=$$?; fi; \
 	if [ $$status -eq 0 ]; then $(MAKE) build || status=$$?; fi; \
 	if [ $$status -eq 0 ]; then $(MAKE) nix-package-eval || status=$$?; fi; \
+	if [ $$status -eq 0 ]; then $(MAKE) nix-package-preset-contract || status=$$?; fi; \
 	if [ $$status -eq 0 ]; then $(MAKE) nix-hardening-contract || status=$$?; fi; \
 	if [ $$status -eq 0 ]; then $(MAKE) nix-profile-eval || status=$$?; fi; \
 	if [ $$status -eq 0 ]; then $(MAKE) nix-build || status=$$?; fi; \
