@@ -70,7 +70,7 @@ func TestEnd4PCIdleControlsStayNixManaged(t *testing.T) {
 	for _, want := range []string{
 		"patch_managed_hypridle_settings",
 		"Idle timers are managed by Wahrwelt through NixOS configuration",
-		`enabled: false`,
+		`visible: false`,
 		`pkill -x hypridle`,
 	} {
 		if !strings.Contains(patcher, want) {
@@ -79,14 +79,8 @@ func TestEnd4PCIdleControlsStayNixManaged(t *testing.T) {
 	}
 
 	seed := readContractFile(t, "../../../NixOS/home/end4/seed/config.nix")
-	for _, want := range []string{
-		`.hyprland.idle.lock = ${toString settings.idle.lockTimeout}`,
-		`.hyprland.idle.screenOff = ${toString settings.idle.screenOffTimeout}`,
-		`.hyprland.idle.suspend = ${toString settings.idle.hibernateTimeout}`,
-	} {
-		if !strings.Contains(seed, want) {
-			t.Fatalf("end4 config seed must expose the managed idle values: missing %q\n%s", want, seed)
-		}
+	if strings.Contains(seed, ".hyprland.idle") {
+		t.Fatalf("end4 config seed must not rewrite user-owned idle settings\n%s", seed)
 	}
 }
 

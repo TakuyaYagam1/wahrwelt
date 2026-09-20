@@ -173,10 +173,10 @@ def patch_managed_hypridle_settings(root: Path) -> None:
 '''
     managed_idle_section = '''        ContentSection {
             id: idleSection
-            enabled: false
+            visible: false
             icon: "timer"
             shape: MaterialShape.Shape.Cookie12Sided
-            title: Translation.tr("Idle") + " - managed by Wahrwelt"
+            title: Translation.tr("Idle")
 '''
     page_path.write_text(
         replace_once(

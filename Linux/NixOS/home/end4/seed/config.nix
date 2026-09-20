@@ -28,11 +28,6 @@ in
               ${dotfilesLib.mkBoolDefault ".appearance.transparency.enable" true} |
               .appearance.transparency.automatic //= false |
               .appearance.transparency.backgroundTransparency //= ${toString trans.shell} |
-              .hyprland //= {} |
-              .hyprland.idle //= {} |
-              .hyprland.idle.lock = ${toString settings.idle.lockTimeout} |
-              .hyprland.idle.screenOff = ${toString settings.idle.screenOffTimeout} |
-              .hyprland.idle.suspend = ${toString settings.idle.hibernateTimeout} |
           ${
             dotfilesLib.mkOpacityFallback ".appearance.transparency.contentTransparency" {
               vendor = 0;
