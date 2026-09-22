@@ -27,6 +27,31 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def patch_pc_settings_preview(text: str, label: str) -> str:
+    expression = (
+        "source: /\\.(mp4|webm|mkv|avi|mov)$/i.test(Config.options.background.wallpaperPath)",
+        "? Config.options.background.thumbnailPath",
+        ": Config.options.background.wallpaperPath",
+    )
+    lines = text.splitlines(keepends=True)
+    matches = [
+        index
+        for index in range(len(lines) - 2)
+        if tuple(line.strip() for line in lines[index : index + 3]) == expression
+    ]
+    if len(matches) != 1:
+        fail(f"{label}: expected 1 matches, found {len(matches)}")
+
+    index = matches[0]
+    first_line = lines[index]
+    indent = first_line[: len(first_line) - len(first_line.lstrip())]
+    newline = "\r\n" if first_line.endswith("\r\n") else "\n"
+    lines[index : index + 3] = [
+        f"{indent}source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath){newline}"
+    ]
+    return "".join(lines)
+
+
 def apply_anchor_patch(root: Path, patch_file: Path, marker: str) -> None:
     result = subprocess.run(
         ["patch", "--fuzz=0", "--forward", "--batch", "-p1", "-i", str(patch_file)],
@@ -715,12 +740,12 @@ def patch_image_consumers(root: Path, variant: str) -> None:
     abstract_path.write_text(abstract_text)
 
     if variant == "pc":
-        replace(
-            "modules/ii/settings/pages/QuickConfig.qml",
-            "                        source: /\\.(mp4|webm|mkv|avi|mov)$/i.test(Config.options.background.wallpaperPath)\n                            ? Config.options.background.thumbnailPath\n                            : Config.options.background.wallpaperPath",
-            "                        source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
-            "pC settings wallpaper preview fallback",
+        quick_config_path = tree / "modules/ii/settings/pages/QuickConfig.qml"
+        quick_config_text = patch_pc_settings_preview(
+            quick_config_path.read_text(),
+            f"pC settings wallpaper preview fallback in {quick_config_path}",
         )
+        quick_config_path.write_text(quick_config_text)
         selector_path = tree / "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
         selector_text = selector_path.read_text()
         selector_start, selector_end = qml_property_block(

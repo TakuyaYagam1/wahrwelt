@@ -151,11 +151,16 @@ shell-selector-model-check: ## Check shell selector family and End4 variant beha
 shell-transition-model-check: ## Check exact 3 + 3 + 3 and End4 3 + 5 + 3 shell transition timelines
 	cd $(REPO_ROOT) && $(NODE) Linux/NixOS/home/shells/quickshell/wahrwelt-shell-transition/tests/transition-model.test.mjs
 
+.PHONY: end4-patch-check
+end4-patch-check: ## Check End4 patch compatibility helpers
+	cd $(REPO_ROOT) && python3 Linux/NixOS/home/end4/patches/tests/live-wallpapers-test.py
+
 .PHONY: hypr-integration-check
 hypr-integration-check: ## Run shell, Lua, selector, and transition integration gates
 	@status=0; \
 	$(MAKE) hypr-shell-integration-check || status=$$?; \
 	$(MAKE) hypr-lua-contract-check || status=$$?; \
+	$(MAKE) end4-patch-check || status=$$?; \
 	$(MAKE) shell-selector-model-check || status=$$?; \
 	$(MAKE) shell-transition-model-check || status=$$?; \
 	exit $$status
