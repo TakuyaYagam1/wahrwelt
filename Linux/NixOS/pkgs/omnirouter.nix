@@ -56,10 +56,9 @@ buildNpmPackage' rec {
     # Turbopack's native memory use exceeds GitHub-hosted runner capacity on
     # current OmniRouter releases. Webpack is the upstream-supported fallback.
     OMNIROUTE_USE_TURBOPACK = "0";
-    # v3.8.50 can exhaust a 6 GiB V8 heap during the Webpack production pass.
-    # Keep the upstream-supported explicit heap setting below the
-    # GitHub-hosted runner's total memory limit.
-    OMNIROUTE_BUILD_MEMORY_MB = "6656";
+    # v3.8.50 exceeds the former 6656 MiB V8 heap during the Webpack production
+    # pass. Match the upstream native-build default so the clean build completes.
+    OMNIROUTE_BUILD_MEMORY_MB = "8192";
     npm_config_arch = stdenv.hostPlatform.parsed.cpu.name;
     SHARP_IGNORE_GLOBAL_LIBVIPS = "0";
     ONNXRUNTIME_NODE_INSTALL = "skip";

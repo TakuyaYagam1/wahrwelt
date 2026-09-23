@@ -16,7 +16,7 @@ func TestOmniRouterUsesConstrainedBuildSettings(t *testing.T) {
 
 	for _, want := range []string{
 		`OMNIROUTE_USE_TURBOPACK = "0";`,
-		`OMNIROUTE_BUILD_MEMORY_MB = "6656";`,
+		`OMNIROUTE_BUILD_MEMORY_MB = "8192";`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("OmniRouter must declare constrained build setting %q\n%s", want, source)
