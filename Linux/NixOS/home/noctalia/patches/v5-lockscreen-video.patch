@@ -1,8 +1,6 @@
-diff --git a/meson.build b/meson.build
-index 7ff5451..fe3f0c6 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -739,6 +739,7 @@ _noctalia_sources = files(
+@@ -752,6 +752,7 @@
    'src/shell/wallpaper/wallpaper_geometry.cpp',
    'src/shell/wallpaper/wallpaper_media.cpp',
    'src/shell/wallpaper/live_wallpaper_controller.cpp',
@@ -10,16 +8,14 @@ index 7ff5451..fe3f0c6 100644
    'src/shell/wallpaper/wallpaper_shuffle_state.cpp',
    'src/shell/wallpaper/wallpaper.cpp',
    'src/shell/wallpaper/panel/wallpaper_panel.cpp',
-@@ -1246,6 +1247,7 @@ if build_tests
-     'vdir_reader',
+@@ -1272,6 +1273,7 @@
      'virtual_grid_view_gesture',
+     'wallpaper_scan_symlink',
      'wallpaper_shuffle_state',
 +    'lockscreen_video_player',
      'wallpaper_media',
      'live_wallpaper_controller',
      'wayland_output_scale',
-diff --git a/src/shell/lockscreen/lock_surface.cpp b/src/shell/lockscreen/lock_surface.cpp
-index 9b98e95..99fcd9f 100644
 --- a/src/shell/lockscreen/lock_surface.cpp
 +++ b/src/shell/lockscreen/lock_surface.cpp
 @@ -13,6 +13,7 @@
@@ -30,7 +26,7 @@ index 9b98e95..99fcd9f 100644
  #include "shell/session/session_action_meta.h"
  #include "shell/session/session_action_runner.h"
  #include "system/weather_service.h"
-@@ -32,6 +33,7 @@
+@@ -33,6 +34,7 @@
  #include <chrono>
  #include <cmath>
  #include <ctime>
@@ -38,7 +34,7 @@ index 9b98e95..99fcd9f 100644
  #include <format>
  #include <memory>
  #include <string_view>
-@@ -546,6 +548,7 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
+@@ -555,6 +557,7 @@
  }
 
  LockSurface::~LockSurface() {
@@ -46,7 +42,7 @@ index 9b98e95..99fcd9f 100644
    m_aliveGuard.reset();
    releaseCaptureTextures();
    if (m_wallpaperTexture.id != 0) {
-@@ -686,6 +689,7 @@ void LockSurface::setWallpaperPath(std::string wallpaperPath) {
+@@ -703,6 +706,7 @@
    if (m_wallpaperPath == wallpaperPath) {
      return;
    }
@@ -54,34 +50,32 @@ index 9b98e95..99fcd9f 100644
 
    if (m_blurredWallpaperTexture.id != 0 && renderContext() != nullptr) {
      renderContext()->backend().makeCurrentNoSurface();
-@@ -731,9 +735,11 @@ void LockSurface::setWallpaperFillColor(Color fillColor) {
- }
-
- void LockSurface::setDesktopCapture(std::optional<ScreencopyImage> capture) {
-+  stopVideoPlayback();
+@@ -751,7 +755,9 @@
    m_desktopCapture = std::move(capture);
+   m_useDesktopCaptureBackground = useAsBackground && m_desktopCapture.has_value() && !m_desktopCapture->rgba.empty();
    m_captureDirty = true;
++  stopVideoPlayback();
    releaseCaptureTextures();
 +  m_wallpaperDirty = true;
    requestLayout();
  }
 
-@@ -1637,7 +1643,13 @@ void LockSurface::releaseWallpaperTextureRef(const std::string& path) {
+@@ -1864,7 +1870,13 @@
  }
 
  void LockSurface::applyWallpaperTexture() {
--  if (m_desktopCapture.has_value() && !m_desktopCapture->rgba.empty()) {
+-  if (usesDesktopCaptureBackground()) {
 +  const std::filesystem::path wallpaperPath(m_wallpaperPath);
 +  const bool liveWallpaper = noctalia::wallpaper::WallpaperMedia::isLivePath(wallpaperPath);
 +  if (liveWallpaper) {
 +    ensureVideoPlayback();
 +  }
 +
-+  if (!liveWallpaper && m_desktopCapture.has_value() && !m_desktopCapture->rgba.empty()) {
++  if (!liveWallpaper && usesDesktopCaptureBackground()) {
      applyBlurredDesktopTexture();
      if (m_blurredDesktopTexture.id != 0) {
        return;
-@@ -1648,6 +1660,11 @@ void LockSurface::applyWallpaperTexture() {
+@@ -1875,6 +1887,11 @@
      return;
    }
 
@@ -93,7 +87,7 @@ index 9b98e95..99fcd9f 100644
    bool loaded = true;
    Color color = rgba(0.0F, 0.0F, 0.0F, 1.0F);
    if (parseColorWallpaperPath(m_wallpaperPath, color)) {
-@@ -1667,13 +1684,16 @@ void LockSurface::applyWallpaperTexture() {
+@@ -1894,13 +1911,16 @@
      m_wallpaper->setFillMode(m_wallpaperFillMode);
      m_wallpaper->setFillColor(m_wallpaperFillColor);
    } else if (m_textureCache != nullptr && !m_wallpaperPath.empty()) {
@@ -113,7 +107,7 @@ index 9b98e95..99fcd9f 100644
        }
      }
 
-@@ -1684,7 +1704,8 @@ void LockSurface::applyWallpaperTexture() {
+@@ -1911,14 +1931,15 @@
          releaseWallpaperTextureRef(m_textureWallpaperPath);
        }
        m_wallpaperTexture = newTexture;
@@ -121,9 +115,8 @@ index 9b98e95..99fcd9f 100644
 +      m_textureWallpaperPath = texturePath;
 +      m_videoFallbackActive = liveWallpaper;
 
-       TextureHandle textureToDisplay = m_wallpaperTexture;
        if (m_blurredWallpaperTexture.id != 0 && renderContext() != nullptr) {
-@@ -1692,7 +1713,7 @@ void LockSurface::applyWallpaperTexture() {
+         renderContext()->backend().makeCurrentNoSurface();
          renderContext()->textureManager().unload(m_blurredWallpaperTexture);
          m_blurredWallpaperTexture = {};
        }
@@ -132,7 +125,7 @@ index 9b98e95..99fcd9f 100644
          auto* renderer = renderContext();
          renderer->makeCurrent(renderTarget());
          static constexpr int kBlurRounds = 3;
-@@ -1726,6 +1747,86 @@ void LockSurface::applyWallpaperTexture() {
+@@ -1951,6 +1972,86 @@
    m_wallpaperDirty = !loaded;
  }
 
@@ -219,12 +212,17 @@ index 9b98e95..99fcd9f 100644
  void LockSurface::releaseCaptureTextures() {
    if (renderContext() == nullptr) {
      m_blurredWallpaperTexture = {};
-@@ -1810,9 +1911,15 @@ void LockSurface::applyBlurredDesktopTexture() {
+@@ -2040,6 +2141,7 @@
  }
 
  void LockSurface::onGpuResourcesInvalidated() {
 +  stopVideoPlayback();
-   releaseCaptureTextures();
+   const bool exitWasActive =
+       m_transitionPhase == TransitionPhase::Exiting || m_transitionPhase == TransitionPhase::ExitEndpoint;
+   const bool entryWasActive = m_transitionPhase == TransitionPhase::Cover
+@@ -2058,7 +2160,12 @@
+     m_transitionProgress = 1.0F;
+   }
 
 -  if (!m_wallpaperPath.empty() && m_textureCache != nullptr) {
 +  const bool liveWallpaper =
@@ -236,7 +234,7 @@ index 9b98e95..99fcd9f 100644
      if (m_textureCache->shared()) {
        m_wallpaperTexture = m_textureCache->peek(m_wallpaperPath);
      } else if (renderContext() != nullptr) {
-@@ -1829,12 +1936,16 @@ void LockSurface::onGpuResourcesInvalidated() {
+@@ -2075,6 +2182,8 @@
  }
 
  void LockSurface::prepareForGraphicsReset() noexcept {
@@ -245,16 +243,15 @@ index 9b98e95..99fcd9f 100644
    m_blurCache.abandon();
    m_wallpaperBlurCache.abandon();
    m_wallpaperTexture = {};
-   m_blurredWallpaperTexture = {};
+@@ -2082,6 +2191,8 @@
    m_captureSourceTexture = {};
    m_blurredDesktopTexture = {};
+   m_transitionCaptureTexture = {};
 +  m_videoTexture = {};
 +  m_videoFallbackActive = false;
    m_captureDirty = true;
    m_wallpaperDirty = true;
  }
-diff --git a/src/shell/lockscreen/lock_surface.h b/src/shell/lockscreen/lock_surface.h
-index 76a27cb..fa19e7d 100644
 --- a/src/shell/lockscreen/lock_surface.h
 +++ b/src/shell/lockscreen/lock_surface.h
 @@ -2,6 +2,7 @@
@@ -265,7 +262,7 @@ index 76a27cb..fa19e7d 100644
  #include "render/animation/animation_manager.h"
  #include "render/core/blur_cache.h"
  #include "render/core/color.h"
-@@ -9,6 +10,7 @@
+@@ -10,6 +11,7 @@
  #include "render/scene/input_dispatcher.h"
  #include "render/scene/node.h"
  #include "shell/lockscreen/lockscreen_login_box.h"
@@ -273,9 +270,9 @@ index 76a27cb..fa19e7d 100644
  #include "wayland/surface.h"
 
  #include <array>
-@@ -104,6 +106,10 @@ private:
-
-   void prepareFrame(bool needsUpdate, bool needsLayout);
+@@ -134,6 +136,10 @@
+   void beginEnterAnimation();
+   void notifyTransitionStateChanged();
    void applyWallpaperTexture();
 +  void ensureVideoPlayback();
 +  void consumeVideoFrame();
@@ -284,7 +281,7 @@ index 76a27cb..fa19e7d 100644
    void applyBlurredDesktopTexture();
    void releaseWallpaperTextureRef(const std::string& path);
    void releaseCaptureTextures();
-@@ -156,6 +162,8 @@ private:
+@@ -187,6 +193,8 @@
    Flex* m_sessionRow = nullptr;
    std::vector<Button*> m_sessionButtons;
    SharedTextureCache* m_textureCache = nullptr;
@@ -293,7 +290,7 @@ index 76a27cb..fa19e7d 100644
    TextureHandle m_wallpaperTexture{};
    TextureHandle m_blurredWallpaperTexture{};
    TextureHandle m_captureSourceTexture{};
-@@ -173,6 +181,8 @@ private:
+@@ -213,6 +221,8 @@
    WallpaperFillMode m_wallpaperFillMode = WallpaperFillMode::Crop;
    Color m_wallpaperFillColor = rgba(0.0F, 0.0F, 0.0F, 0.0F);
    bool m_wallpaperDirty = false;

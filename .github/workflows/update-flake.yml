@@ -91,8 +91,21 @@ jobs:
       - name: Evaluate preset NixOS hosts
         run: |
           for preset in minimal desktop developer personal; do
-            nix eval --raw --no-write-lock-file \
-              "path:${GITHUB_WORKSPACE}?dir=Linux/NixOS/presets/${preset}#checks.x86_64-linux.preset-host.drvPath"
+            for attempt in 1 2 3; do
+              if nix eval --raw --no-write-lock-file \
+                "path:${GITHUB_WORKSPACE}?dir=Linux/NixOS/presets/${preset}#checks.x86_64-linux.preset-host.drvPath"; then
+                break
+              fi
+
+              if [ "$attempt" -eq 3 ]; then
+                echo "::error::Failed to evaluate the ${preset} preset after ${attempt} attempts"
+                exit 1
+              fi
+
+              delay_seconds=$((attempt * 15))
+              echo "Preset evaluation failed; retrying ${preset} in ${delay_seconds}s"
+              sleep "$delay_seconds"
+            done
           done
 
       - name: Build public Wahrwelt package
