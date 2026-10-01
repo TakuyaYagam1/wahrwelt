@@ -85,9 +85,13 @@ let
   ];
 in
 {
-  disabledModules = lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia.nix") [
-    "programs/noctalia.nix"
-  ];
+  disabledModules =
+    lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia.nix") [
+      "programs/noctalia.nix"
+    ]
+    ++ lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia") [
+      "programs/noctalia"
+    ];
 
   _module.args.homeLibs = homeLibs;
 
