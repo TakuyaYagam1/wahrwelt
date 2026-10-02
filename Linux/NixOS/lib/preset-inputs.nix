@@ -100,9 +100,6 @@ let
       url = "github:ilysenko/codex-desktop-linux";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    kimi-code = {
-      url = "github:MoonshotAI/kimi-code";
-    };
   };
 
   personalInputs = {

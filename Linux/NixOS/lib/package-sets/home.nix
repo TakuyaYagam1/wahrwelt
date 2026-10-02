@@ -25,7 +25,6 @@
     claude-desktop
     claude-code
     codex
-    kimi-code
   ];
   personal = with pkgs; [
     happ

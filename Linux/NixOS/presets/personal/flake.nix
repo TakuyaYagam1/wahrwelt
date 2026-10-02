@@ -79,9 +79,6 @@
       url = "github:ilysenko/codex-desktop-linux";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    kimi-code = {
-      url = "github:MoonshotAI/kimi-code";
-    };
     happ-nix = {
       url = "github:DaHL-gh/happ-nix";
       inputs.nixpkgs.follows = "nixpkgs";
