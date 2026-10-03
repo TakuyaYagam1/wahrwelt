@@ -143,20 +143,24 @@ fi
 
 
 SERVICE_SHA256 = {
-    "official": "2fae0e588adb47ffbbf07b8ad49ea74125759080c2bb804a6d93c9f1c334b966",
-    "pc": "8bb36d0ee14633c8bd25fc62741264e61f63d4f5e180389048562ea19fa205b6",
+    "official": ("2fae0e588adb47ffbbf07b8ad49ea74125759080c2bb804a6d93c9f1c334b966",),
+    "pc": (
+        "8bb36d0ee14633c8bd25fc62741264e61f63d4f5e180389048562ea19fa205b6",
+        # 9f82491: search results notification and incremental selector updates.
+        "c07be06a644254369d6adf7f03cb4883c6fd541cb5bac1702f60b423c54c1ba4",
+    ),
 }
 
 
 def patch_service(root: Path, variant: str) -> None:
     path = root / ("ii/services/Wallpapers.qml" if (root / "ii").is_dir() else "services/Wallpapers.qml")
     text = path.read_text()
-    expected_hash = SERVICE_SHA256[variant]
+    expected_hashes = SERVICE_SHA256[variant]
     actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-    if actual_hash != expected_hash:
+    if actual_hash not in expected_hashes:
         fail(
             f"upstream Wallpapers.qml drifted in {path}: "
-            f"expected sha256 {expected_hash}, found {actual_hash}"
+            f"expected sha256 {' or '.join(expected_hashes)}, found {actual_hash}"
         )
     for anchor, label in (
         ("pragma Singleton", "service singleton declaration"),

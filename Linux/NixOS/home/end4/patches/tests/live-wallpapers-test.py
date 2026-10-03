@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 
@@ -36,6 +37,19 @@ class PcSettingsPreviewTest(unittest.TestCase):
                 source = indent + expression.replace("\n", f"\n{indent}") + "\n"
                 expected = indent + replacement + "\n"
                 self.assertEqual(patch_preview(source, "QuickConfig fixture"), expected)
+
+
+class WallpaperServiceDriftTest(unittest.TestCase):
+    def test_unreviewed_service_is_rejected_without_replacing_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "services/Wallpapers.qml"
+            path.parent.mkdir()
+            original = "pragma Singleton\nFolderListModelWithHistory\nproperty string searchQuery\n"
+            path.write_text(original)
+            with self.assertRaisesRegex(SystemExit, "upstream Wallpapers.qml drifted"):
+                LIVE_WALLPAPERS.patch_service(root, "pc")
+            self.assertEqual(path.read_text(), original)
 
 
 if __name__ == "__main__":
