@@ -48,6 +48,7 @@ Singleton {
     readonly property string orderFilePath: `${Directories.shellConfig}/wallpaper_order.json`
 
     signal changed()
+    signal resultsUpdated()
     signal selectionChanged(path: string)
     signal thumbnailGenerated(directory: string)
     signal thumbnailGeneratedFile(filePath: string)
@@ -309,6 +310,7 @@ Singleton {
                     });
                     root.metadata = nextMetadata;
                     root.wallpapers = paths;
+                    root.resultsUpdated();
                 } catch (error) {
                     // Keep the last good model when a corrupt directory entry
                     // or a partial helper response cannot be decoded.
@@ -437,6 +439,7 @@ Singleton {
     }
 
     function moveWallpaper(fromIndex, toIndex) {
+        if (root.searchQuery.trim().length > 0) return;
         if (fromIndex < 0 || toIndex < 0 || fromIndex >= wallpaperModel.count || toIndex >= wallpaperModel.count || fromIndex === toIndex) return;
         wallpaperModel.move(fromIndex, toIndex, 1);
         const cleanDirectory = root.cleanPath(root.effectiveDirectory);

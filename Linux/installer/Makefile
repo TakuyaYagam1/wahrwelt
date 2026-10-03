@@ -154,6 +154,7 @@ shell-transition-model-check: ## Check exact 3 + 3 + 3 and End4 3 + 5 + 3 shell 
 .PHONY: end4-patch-check
 end4-patch-check: ## Check End4 patch compatibility helpers
 	cd $(REPO_ROOT) && python3 Linux/NixOS/home/end4/patches/tests/live-wallpapers-test.py
+	cd $(REPO_ROOT) && $(NODE) Linux/NixOS/home/end4/patches/tests/wallpapers-service.test.mjs
 
 .PHONY: hypr-integration-check
 hypr-integration-check: ## Run shell, Lua, selector, and transition integration gates
