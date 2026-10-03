@@ -34,7 +34,9 @@ with pkgs-stable;
   magicrescue
   mdbtools
   missidentify
-  msitools
+  # Disabled: msitools 0.106 is broken even in nixpkgs-stable (nixos-26.05).
+  # msibuild segfaults even when creating an empty MSI.
+  # msitools
   myrescue
   netsniff-ng
   ngrep
