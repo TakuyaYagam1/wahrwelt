@@ -27,6 +27,183 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def shell_function_body(text: str, name: str, label: str) -> tuple[int, int, str]:
+    header = re.compile(
+        rf"(?m)^(?P<indent>[ \t]*){re.escape(name)}[ \t]*\([ \t]*\)[ \t]*\{{[ \t]*\r?$"
+    )
+    matches = list(header.finditer(text))
+    if len(matches) != 1:
+        fail(f"{label}: expected one {name} function, found {len(matches)}")
+
+    match = matches[0]
+    newline = text.find("\n", match.end())
+    if newline < 0:
+        fail(f"{label}: {name} function body is missing")
+    body_start = newline + 1
+    closing = re.compile(rf"(?m)^{re.escape(match.group('indent'))}}}[ \t]*\r?$")
+    end_match = closing.search(text, body_start)
+    if end_match is None:
+        fail(f"{label}: {name} function closing brace is missing")
+    return body_start, end_match.start(), text[body_start : end_match.start()]
+
+
+def transform_switchwall(text: str, label: str) -> str:
+    assignment_lines = re.findall(r"(?m)^[ \t]*MPVPAPER_FLAGS\b[^\r\n]*$", text)
+    if len(assignment_lines) > 1:
+        fail(f"{label}: MPVPAPER_FLAGS declaration is ambiguous")
+    has_flags = bool(assignment_lines)
+    if has_flags:
+        assignment = re.fullmatch(
+            r"[ \t]*MPVPAPER_FLAGS=(?:\"([^\"]*)\"|'([^']*)')[ \t]*",
+            assignment_lines[0],
+        )
+        if assignment is None:
+            fail(f"{label}: MPVPAPER_FLAGS must be a quoted literal")
+        value = assignment.group(1) if assignment.group(1) is not None else assignment.group(2)
+        if value != "-p -a max":
+            fail(f"{label}: unsupported MPVPAPER_FLAGS value {value!r}")
+
+    flag_name_count = len(re.findall(r"\bMPVPAPER_FLAGS\b", text))
+    expected_flag_names = 3 if has_flags else 0
+    if flag_name_count != expected_flag_names:
+        fail(f"{label}: MPVPAPER_FLAGS references are missing or ambiguous")
+
+    create_start, create_end, create_body = shell_function_body(text, "create_restore_script", label)
+    remove_start, remove_end, remove_body = shell_function_body(text, "remove_restore", label)
+    if not (create_end <= remove_start or remove_end <= create_start):
+        fail(f"{label}: restore function ranges overlap")
+
+    heredoc_open = re.compile(
+        r'(?m)^[ \t]*cat[ \t]+>[ \t]*"\$RESTORE_SCRIPT\.tmp"[ \t]*<<[ \t]*EOF[ \t]*\r?$'
+    )
+    heredoc_matches = list(heredoc_open.finditer(create_body))
+    if len(heredoc_matches) != 1:
+        fail(f"{label}: restore script heredoc is missing or ambiguous")
+    heredoc_end = re.compile(r"(?m)^[ \t]*EOF[ \t]*\r?$")
+    heredoc_ends = list(heredoc_end.finditer(create_body, heredoc_matches[0].end()))
+    if len(heredoc_ends) != 1:
+        fail(f"{label}: restore script heredoc terminator is missing or ambiguous")
+    heredoc = create_body[heredoc_matches[0].end() : heredoc_ends[0].start()]
+
+    call_pattern = re.compile(
+        r'(?m)^(?P<indent>[ \t]*)mpvpaper[ \t]+'
+        r'(?P<flags>\$MPVPAPER_FLAGS[ \t]+)?-o[ \t]+"\$VIDEO_OPTS"'
+        r'[ \t]+"(?P<monitor>\\?\$monitor)"[ \t]+"\$video_path"'
+        r'[ \t]*&[ \t]*(?:\#[^\r\n]*)?[ \t]*$'
+    )
+    restore_calls = list(call_pattern.finditer(heredoc))
+    if len(restore_calls) != 1 or restore_calls[0].group("monitor") != r"\$monitor":
+        fail(f"{label}: restore playback command is missing or unsupported")
+
+    all_calls = list(re.finditer(r"(?m)^[ \t]*mpvpaper[ \t]+[^\r\n]*(?:\r?\n|$)", text))
+    if len(all_calls) != 2:
+        fail(f"{label}: expected one runtime and one restore playback command, found {len(all_calls)}")
+    runtime_calls = [
+        match for match in all_calls if not (create_start <= match.start() < create_end)
+    ]
+    if len(runtime_calls) != 1:
+        fail(f"{label}: runtime playback command is missing or ambiguous")
+    runtime_call = runtime_calls[0].group(0).rstrip("\r\n")
+    runtime_match = call_pattern.fullmatch(runtime_call)
+    if runtime_match is None or runtime_match.group("monitor") != "$monitor":
+        fail(f"{label}: runtime playback command is missing or unsupported")
+    if bool(runtime_match.group("flags")) != has_flags:
+        fail(f"{label}: runtime MPVPAPER_FLAGS use does not match its declaration")
+    if bool(restore_calls[0].group("flags")) != has_flags:
+        fail(f"{label}: restore MPVPAPER_FLAGS use does not match its declaration")
+
+    local_path = re.compile(
+        r'(?m)^(?P<indent>[ \t]*)local[ \t]+video_path[ \t]*=[ \t]*(?:\$1|"\$1")[ \t]*(?P<newline>\r?\n|$)'
+    )
+    local_matches = list(local_path.finditer(create_body))
+    if len(local_matches) != 1:
+        fail(f"{label}: video path local is missing or ambiguous")
+    local_match = local_matches[0]
+    newline = local_match.group("newline") or "\n"
+    indent = local_match.group("indent")
+    quoted_path = (
+        f'{indent}local video_path="$1"{newline}'
+        f"{indent}local escaped_video_path{newline}"
+        f'{indent}printf -v escaped_video_path \'%q\' "$video_path"{newline}'
+    )
+    create_body = create_body[: local_match.start()] + quoted_path + create_body[local_match.end() :]
+
+    restore_line = restore_calls[0].group(0)
+    restore_line_match = re.search(r"(?m)^[ \t]*mpvpaper[ \t]+[^\r\n]*", create_body)
+    if restore_line_match is None or restore_line_match.group(0) != restore_line:
+        fail(f"{label}: restore playback command changed during transformation")
+    restore_indent = restore_calls[0].group("indent")
+    flags = "$MPVPAPER_FLAGS " if has_flags else ""
+    restore_replacement = (
+        f'{restore_indent}mpvpaper {flags}-o "$VIDEO_OPTS" "\\$monitor" '
+        "$escaped_video_path &"
+    )
+    create_body = (
+        create_body[: restore_line_match.start()]
+        + restore_replacement
+        + create_body[restore_line_match.end() :]
+    )
+
+    create_shebang, create_shebang_count = re.subn(
+        r"(?m)^(?P<indent>[ \t]*)#!/bin/bash[ \t]*$",
+        r"\g<indent>#!$RESTORE_SHELL",
+        create_body,
+    )
+    remove_shebang, remove_shebang_count = re.subn(
+        r"(?m)^(?P<indent>[ \t]*)#!/bin/bash[ \t]*$",
+        r"\g<indent>#!$RESTORE_SHELL",
+        remove_body,
+    )
+    if create_shebang_count != 1 or remove_shebang_count != 1:
+        fail(f"{label}: expected generated and cleared restore shebangs")
+
+    restore_shell_lines = re.findall(r"(?m)^[ \t]*RESTORE_SHELL\b[^\r\n]*$", text)
+    if len(restore_shell_lines) > 1:
+        fail(f"{label}: RESTORE_SHELL declaration is ambiguous")
+    if restore_shell_lines:
+        if re.fullmatch(r'[ \t]*RESTORE_SHELL="\$\{BASH:-bash\}"[ \t]*', restore_shell_lines[0]) is None:
+            fail(f"{label}: unsupported RESTORE_SHELL declaration")
+    else:
+        restore_script_lines = list(re.finditer(r"(?m)^[ \t]*RESTORE_SCRIPT=[^\r\n]*(?:\r?\n|$)", text))
+        if len(restore_script_lines) != 1:
+            fail(f"{label}: RESTORE_SCRIPT declaration is missing or ambiguous")
+        anchor = restore_script_lines[0]
+        anchor_line = anchor.group(0)
+        line_indent = anchor_line[: len(anchor_line) - len(anchor_line.lstrip())]
+        line_ending = "\r\n" if anchor_line.endswith("\r\n") else "\n"
+        text = (
+            text[: anchor.end()]
+            + f'{line_indent}RESTORE_SHELL="${{BASH:-bash}}"{line_ending}'
+            + text[anchor.end() :]
+        )
+        if anchor.start() < create_start:
+            delta = len(f'{line_indent}RESTORE_SHELL="${{BASH:-bash}}"{line_ending}')
+            create_start += delta
+            create_end += delta
+        if anchor.start() < remove_start:
+            delta = len(f'{line_indent}RESTORE_SHELL="${{BASH:-bash}}"{line_ending}')
+            remove_start += delta
+            remove_end += delta
+
+    replacements = sorted(
+        (
+            (create_start, create_end, create_shebang),
+            (remove_start, remove_end, remove_shebang),
+        ),
+        reverse=True,
+    )
+    for start, end, body in replacements:
+        text = text[:start] + body + text[end:]
+    return text
+
+
+def patch_switchwall(root: Path) -> None:
+    path = root / "scripts/colors/switchwall.sh"
+    if not path.is_file():
+        fail(f"missing pC switchwall script {path}")
+    path.write_text(transform_switchwall(path.read_text(), str(path)))
+
+
 def patch_pc_settings_preview(text: str, label: str) -> str:
     expression = (
         "source: /\\.(mp4|webm|mkv|avi|mov)$/i.test(Config.options.background.wallpaperPath)",
@@ -939,6 +1116,8 @@ def main() -> int:
         fail(f"missing source root {root}")
 
     apply_anchor_patch(root, args.patch, "// End4 live wallpaper contract anchor.")
+    if args.variant == "pc":
+        patch_switchwall(root)
     install_runtime_helpers(root)
     patch_gemini_categorizer(root)
     patch_service(root, args.variant)

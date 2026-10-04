@@ -3,6 +3,7 @@ set -euo pipefail
 
 tests_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 verifier="$tests_dir/end4-artifact-test.sh"
+repo_root="$(CDPATH='' cd -- "$tests_dir/../../../../.." && pwd)"
 test_root="$(mktemp -d)"
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -67,6 +68,133 @@ assert_lock_rejected() {
   case "$output" in
     *"enter logind before the native lock dispatcher"*) ;;
     *) fail "$name failed for the wrong reason: $output" ;;
+  esac
+}
+
+assert_switchwall_command_pair() {
+  local name="$1"
+  local expectation="$2"
+  local restore_command="$3"
+  local runtime_command="$4"
+  local flags_declaration="${5:-}"
+  local fixture="$test_root/$name.switchwall.sh"
+  local function_file="$test_root/switchwall-contract-function.sh"
+
+  sed -n '/^switchwall_has_supported_video_commands() {/,/^}/p' "$verifier" >"$function_file"
+  if [ ! -s "$function_file" ]; then
+    fail "could not load switchwall video command contract helper"
+  fi
+  if [ -n "$flags_declaration" ]; then
+    printf '%s\n' "$flags_declaration" "$restore_command" "$runtime_command" >"$fixture"
+  else
+    printf '%s\n' "$restore_command" "$runtime_command" >"$fixture"
+  fi
+
+  if [ "$expectation" = accept ]; then
+    if ! bash -e -c 'source "$1"; switchwall_has_supported_video_commands "$2"' \
+      end4-switchwall-contract "$function_file" "$fixture"; then
+      fail "$name supported mpvpaper command pair was rejected"
+    fi
+  elif bash -e -c 'source "$1"; switchwall_has_supported_video_commands "$2"' \
+    end4-switchwall-contract "$function_file" "$fixture"; then
+    fail "$name unsupported mpvpaper command pair was accepted"
+  fi
+}
+
+make_video_backend_fixture() {
+  local name="$1"
+  local use_helper="$2"
+  local fixture="$test_root/$name"
+
+  mkdir -p "$fixture/scripts/colors" "$fixture/scripts/wallpapers" "$fixture/scripts/lib"
+  cp "$repo_root/Linux/NixOS/home/end4/patches/video-backend-reconcile.sh" \
+    "$fixture/scripts/wallpapers/video-backend-reconcile.sh"
+  chmod 0755 "$fixture/scripts/wallpapers/video-backend-reconcile.sh"
+  if [ "$use_helper" = 1 ]; then
+    cat >"$fixture/scripts/lib/config.sh" <<'EOF'
+config_json_update() {
+  :
+}
+EOF
+  fi
+  cat >"$fixture/scripts/colors/switchwall.sh" <<'SWITCHWALL'
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$(cd "$(dirname "$BASH_SOURCE")" && pwd)"
+if [ "$END4_TEST_USE_CONFIG_HELPER" = 1 ]; then
+  source "$SCRIPT_DIR/../lib/config.sh"
+else
+  config_json_update() {
+    :
+  }
+fi
+
+if [ -z "$XDG_CONFIG_HOME" ]; then
+  XDG_CONFIG_HOME="$HOME/.config"
+fi
+SHELL_CONFIG_FILE="$XDG_CONFIG_HOME/illogical-impulse/config.json"
+RESTORE_SCRIPT_DIR="$XDG_CONFIG_HOME/hypr/custom/scripts"
+RESTORE_SCRIPT="$RESTORE_SCRIPT_DIR/__restore_video_wallpaper.sh"
+VIDEO_OPTS="no-audio loop hwdec=auto scale=bilinear interpolation=no video-sync=display-resample panscan=1.0 video-scale-x=1.0 video-scale-y=1.0 video-align-x=0.5 video-align-y=0.5 load-scripts=no"
+MPVPAPER_FLAGS="$END4_TEST_MPVPAPER_FLAGS"
+
+create_restore_script() {
+  local video_path="$1"
+  local escaped_video_path escaped_video_opts
+  config_json_update "$SHELL_CONFIG_FILE" --arg path "$video_path" \
+    '.background.wallpaperPath = $path' || return
+  printf -v escaped_video_path '%q' "$video_path"
+  printf -v escaped_video_opts '%q' "$VIDEO_OPTS"
+  cat >"$RESTORE_SCRIPT" <<EOF
+#!$BASH
+for monitor in \$(hyprctl monitors -j | jq -r '.[] | .name'); do
+  mpvpaper $MPVPAPER_FLAGS -o $escaped_video_opts "\$monitor" $escaped_video_path &
+  sleep 0.1
+done
+EOF
+  chmod 0755 "$RESTORE_SCRIPT"
+}
+
+main() {
+  :
+}
+
+main "$@"
+SWITCHWALL
+  chmod 0755 "$fixture/scripts/colors/switchwall.sh"
+  printf '%s' "$fixture"
+}
+
+assert_video_backend_fixture() {
+  local name="$1"
+  local use_helper="$2"
+  local mpvpaper_flags="$3"
+  local fixture function_file output
+
+  fixture="$(make_video_backend_fixture "$name" "$use_helper")"
+  if [ "$use_helper" = 1 ] && [ ! -f "$fixture/scripts/lib/config.sh" ]; then
+    fail "$name fixture is missing its relative config helper"
+  fi
+  if [ "$use_helper" = 0 ] && [ -e "$fixture/scripts/lib/config.sh" ]; then
+    fail "$name legacy fixture unexpectedly contains the config helper"
+  fi
+  function_file="$test_root/video-backend-function.sh"
+  sed -n '/^run_end4_video_backend_simulation() {/,/^}/p' "$verifier" >"$function_file"
+  if [ ! -s "$function_file" ]; then
+    fail "video backend fixture could not load the verifier simulation"
+  fi
+  if ! output="$(END4_TEST_USE_CONFIG_HELPER="$use_helper" \
+    END4_TEST_MPVPAPER_FLAGS="$mpvpaper_flags" \
+    bash -e -c 'source "$1"; run_end4_video_backend_simulation "$2" "$3"' \
+    end4-video-backend-test "$function_file" \
+    "$fixture/scripts/wallpapers/video-backend-reconcile.sh" \
+    "$fixture/scripts/colors/switchwall.sh" 2>&1)"; then
+    fail "$name video backend fixture failed: $output"
+  fi
+  case "$output" in
+    *"No such file or directory"* | *"command not found"*)
+      fail "$name reported an unavailable relative helper: $output"
+      ;;
   esac
 }
 
@@ -160,5 +288,36 @@ case "$output" in
   *"outside start-shell.sh"*) ;;
   *) fail "extensionless helper failed for the wrong reason: $output" ;;
 esac
+
+assert_video_backend_fixture video-backend-with-helper 1 '-p -a max'
+assert_video_backend_fixture video-backend-legacy 0 ''
+
+# shellcheck disable=SC2016
+assert_switchwall_command_pair legacy-video-commands accept \
+  'mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &' \
+  'mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
+# shellcheck disable=SC2016
+assert_switchwall_command_pair flagged-video-commands accept \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &' \
+  'MPVPAPER_FLAGS="-p -a max"'
+# shellcheck disable=SC2016
+assert_switchwall_command_pair spaced-flagged-video-commands accept \
+  'mpvpaper  $MPVPAPER_FLAGS   -o  "$VIDEO_OPTS"  "\$monitor"  $escaped_video_path  &' \
+  'mpvpaper  $MPVPAPER_FLAGS   -o  "$VIDEO_OPTS"  "$monitor"  "$video_path"  &' \
+  'MPVPAPER_FLAGS="-p -a max"'
+# shellcheck disable=SC2016
+assert_switchwall_command_pair mixed-video-command-flags reject \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &' \
+  'mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &' \
+  'MPVPAPER_FLAGS="-p -a max"'
+# shellcheck disable=SC2016
+assert_switchwall_command_pair reordered-video-runtime-argv reject \
+  'mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &' \
+  'mpvpaper -o "$VIDEO_OPTS" "$video_path" "$monitor" &'
+# shellcheck disable=SC2016
+assert_switchwall_command_pair comment-only-video-commands reject \
+  '# mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &' \
+  '# mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
 
 printf 'OK End4 artifact lifecycle verifier fixtures\n'

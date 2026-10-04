@@ -25,6 +25,43 @@ elif [ ! -f "$artifact/shell.qml" ] && [ ! -f "$artifact/ii/shell.qml" ]; then
   exit 1
 fi
 
+switchwall_has_supported_video_commands() {
+  local switchwall="$1"
+  local normalized_source
+  local video_command_count flag_reference_line_count
+  # shellcheck disable=SC2016
+  local legacy_restore='mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &'
+  # shellcheck disable=SC2016
+  local legacy_runtime='mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
+  # shellcheck disable=SC2016
+  local flagged_restore='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &'
+  # shellcheck disable=SC2016
+  local flagged_runtime='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
+
+  normalized_source="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^mpvpaper[[:space:]]/s/[[:blank:]]+/ /g' "$switchwall")" || return 1
+  video_command_count="$(grep -cE '^mpvpaper[[:space:]]' <<<"$normalized_source" || true)"
+  [ "$video_command_count" -eq 2 ] || return 1
+
+  flag_reference_line_count="$(grep -cF 'MPVPAPER_FLAGS' <<<"$normalized_source" || true)"
+  if [ "$flag_reference_line_count" -eq 0 ]; then
+    if grep -Fxq -- "$legacy_restore" <<<"$normalized_source" &&
+      grep -Fxq -- "$legacy_runtime" <<<"$normalized_source"; then
+      return 0
+    fi
+    return 1
+  fi
+
+  if [ "$flag_reference_line_count" -eq 3 ] &&
+    { grep -Fxq -- 'MPVPAPER_FLAGS="-p -a max"' <<<"$normalized_source" ||
+      grep -Fxq -- "MPVPAPER_FLAGS='-p -a max'" <<<"$normalized_source"; } &&
+    grep -Fxq -- "$flagged_restore" <<<"$normalized_source" &&
+    grep -Fxq -- "$flagged_runtime" <<<"$normalized_source"; then
+    return 0
+  fi
+
+  return 1
+}
+
 check_live_wallpaper_contract() {
   local variant="$1"
   local root="$2"
@@ -187,8 +224,12 @@ check_live_wallpaper_contract() {
     fi
   done
 
+  if ! switchwall_has_supported_video_commands "$switchwall"; then
+    printf 'FAIL: End4 %s existing video backend has unsupported or missing restore/runtime mpvpaper commands: %s\n' \
+      "$variant" "$switchwall" >&2
+    exit 1
+  fi
   for expected in \
-    'mpvpaper -o' \
     'no-audio loop' \
     'panscan=1.0' \
     'kill_existing_mpvpaper' \
@@ -232,9 +273,9 @@ check_live_wallpaper_contract() {
     lock_config="end4-pC"
   fi
   if ! sed -n '/    function lock() {/,/^    }/p' "$session" |
-      grep -Fq "[\"qs\", \"-c\", \"$lock_config\", \"ipc\", \"call\", \"lock\", \"activate\"]" ||
+    grep -Fq "[\"qs\", \"-c\", \"$lock_config\", \"ipc\", \"call\", \"lock\", \"activate\"]" ||
     sed -n '/    function lock() {/,/^    }/p' "$session" |
-      grep -Fq 'loginctl'; then
+    grep -Fq 'loginctl'; then
     printf 'FAIL: End4 %s session menu bypasses the configured lock dispatcher: %s\n' \
       "$variant" "$session" >&2
     exit 1
@@ -322,7 +363,7 @@ check_live_wallpaper_contract() {
     if ! sed -n '/id: lockBackgroundLoader/,/^    }/p' "$ii_lock_surface" |
       grep -Fq 'active: true' ||
       sed -n '/id: lockBackgroundLoader/,/^    }/p' "$ii_lock_surface" |
-        grep -Fq 'active: WM.compositor === "niri"'; then
+      grep -Fq 'active: WM.compositor === "niri"'; then
       printf 'FAIL: End4 %s secure lock wallpaper renderer is not always active: %s\n' \
         "$variant" "$ii_lock_surface" >&2
       exit 1
@@ -359,7 +400,7 @@ check_live_wallpaper_contract() {
   done
   if grep -Fq 'id: previousWallpaper' "$background" &&
     ! sed -n '/id: previousWallpaper/,/^            }/p' "$background" |
-      grep -Fq 'visible: !bgRoot.videoRevealed'; then
+    grep -Fq 'visible: !bgRoot.videoRevealed'; then
     printf 'FAIL: End4 %s previous wallpaper keeps covering the live video layer: %s\n' \
       "$variant" "$background" >&2
     exit 1
@@ -635,19 +676,25 @@ EOF
 run_end4_video_backend_simulation() {
   local reconcile="$1"
   local switchwall="$2"
-  local fixture fakebin config_home runtime_dir restore_script generated_switchwall log monitors marker scope_active dangerous_video
+  local fixture fakebin config_home runtime_dir restore_script generated_switchwall source_script_dir
+  local log monitors marker scope_active dangerous_video
+  local mpvpaper_arg_count option_index monitor_index video_path_index video_opts_arg monitor_arg video_path_arg
+  local expected_video_opts
+  local -a mpvpaper_args
   fixture="$(mktemp -d)"
   fakebin="$fixture/bin"
   config_home="$fixture/config"
   runtime_dir="$fixture/runtime"
   restore_script="$config_home/hypr/custom/scripts/__restore_video_wallpaper.sh"
-  generated_switchwall="$fixture/switchwall.sh"
+  generated_switchwall="$fixture/scripts/colors/switchwall.sh"
+  source_script_dir="$(CDPATH='' cd -- "$(dirname -- "$switchwall")" && pwd)"
   log="$fixture/backend.log"
   monitors="$fixture/monitors.json"
   marker="$fixture/command-substitution-ran"
   scope_active="$fixture/video-scope-active"
   dangerous_video="$fixture/space and 'single' \"double\" \$(touch \"\$END4_TEST_MARKER\"); echo injected.mp4"
-  mkdir -p "$fakebin" "$runtime_dir" "$(dirname "$restore_script")" "$config_home/illogical-impulse"
+  mkdir -p "$fakebin" "$runtime_dir" "$(dirname "$restore_script")" \
+    "$config_home/illogical-impulse" "$fixture/scripts/colors" "$fixture/scripts/lib"
   : >"$dangerous_video"
   printf '%s\n' '[{"name":"eDP-1"}]' >"$monitors"
   jq -cn --arg path "$dangerous_video" '{background:{wallpaperPath:$path}}' \
@@ -657,7 +704,9 @@ run_end4_video_backend_simulation() {
   # shellcheck disable=SC2016
   printf '%s\n' "#!${BASH}" 'cat "$END4_TEST_MONITORS"' >"$fakebin/hyprctl"
   # shellcheck disable=SC2016
-  printf '%s\n' "#!${BASH}" 'printf "mpvpaper:%s\n" "$*" >>"$END4_TEST_LOG"' >"$fakebin/mpvpaper"
+  printf '%s\n' "#!${BASH}" \
+    'printf "mpvpaper:%s\n" "$*" >>"$END4_TEST_LOG"' \
+    'printf "mpvpaper-arg:%s\n" "$@" >>"$END4_TEST_LOG"' >"$fakebin/mpvpaper"
   # shellcheck disable=SC2016
   printf '%s\n' "#!${BASH}" 'exit 0' >"$fakebin/sleep"
   # shellcheck disable=SC2016
@@ -686,11 +735,14 @@ run_end4_video_backend_simulation() {
     'if [ "${1:-}" = --fork ]; then shift; fi' \
     '"$@"' >"$fakebin/setsid"
   cp "$switchwall" "$generated_switchwall"
+  if [ -f "$source_script_dir/../lib/config.sh" ]; then
+    cp "$source_script_dir/../lib/config.sh" "$fixture/scripts/lib/config.sh"
+  fi
   chmod 0755 "$fakebin/pkill" "$fakebin/hyprctl" "$fakebin/mpvpaper" "$fakebin/sleep" \
     "$fakebin/systemd-run" "$fakebin/systemctl" "$fakebin/setsid" "$generated_switchwall"
   sed -i 's/^main "\$@"/# main "\$@"/' "$generated_switchwall"
   # shellcheck disable=SC2016
-  XDG_CONFIG_HOME="$config_home" HOME="$fixture/home" "$BASH" -c \
+  XDG_CONFIG_HOME="$config_home" HOME="$fixture/home" "$BASH" -e -c \
     'source "$1"; create_restore_script "$2"' \
     end4-generated-restore "$generated_switchwall" "$dangerous_video"
   if [ "$(head -n1 "$restore_script")" != "#!${BASH}" ] || [ -e "$marker" ]; then
@@ -700,11 +752,47 @@ run_end4_video_backend_simulation() {
   fi
 
   PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" END4_TEST_SCOPE_ACTIVE="$scope_active" "$reconcile"
+  mapfile -t mpvpaper_args < <(sed -n 's/^mpvpaper-arg://p' "$log")
+  mpvpaper_arg_count="${#mpvpaper_args[@]}"
+  expected_video_opts='no-audio loop hwdec=auto scale=bilinear interpolation=no video-sync=display-resample panscan=1.0 video-scale-x=1.0 video-scale-y=1.0 video-align-x=0.5 video-align-y=0.5 load-scripts=no'
+  if [ "$mpvpaper_arg_count" -eq 7 ]; then
+    if [ "${mpvpaper_args[0]}" != '-p' ] ||
+      [ "${mpvpaper_args[1]}" != '-a' ] ||
+      [ "${mpvpaper_args[2]}" != 'max' ] ||
+      [ "${mpvpaper_args[3]}" != '-o' ] ||
+      ! grep -Fq 'mpvpaper:-p -a max -o no-audio loop' "$log"; then
+      rm -rf -- "$fixture"
+      printf 'FAIL: End4 video backend changed the optional mpvpaper flag argv\n' >&2
+      exit 1
+    fi
+    option_index=4
+    monitor_index=5
+    video_path_index=6
+  elif [ "$mpvpaper_arg_count" -eq 4 ]; then
+    if [ "${mpvpaper_args[0]}" != '-o' ] ||
+      ! grep -Fq 'mpvpaper:-o no-audio loop' "$log"; then
+      rm -rf -- "$fixture"
+      printf 'FAIL: End4 legacy video backend changed the mpvpaper option argv\n' >&2
+      exit 1
+    fi
+    option_index=1
+    monitor_index=2
+    video_path_index=3
+  else
+    rm -rf -- "$fixture"
+    printf 'FAIL: End4 mpvpaper received %s arguments, expected legacy or flagged argv\n' \
+      "$mpvpaper_arg_count" >&2
+    exit 1
+  fi
+  video_opts_arg="${mpvpaper_args[option_index]}"
+  monitor_arg="${mpvpaper_args[monitor_index]}"
+  video_path_arg="${mpvpaper_args[video_path_index]}"
   if [ -e "$marker" ] ||
     ! grep -Fq 'systemd-run:--user --scope --quiet --collect --unit=wahrwelt-video-wallpaper' "$log" ||
     ! grep -Fq 'setsid:--fork' "$log" ||
-    ! grep -Fq 'mpvpaper:-o no-audio loop' "$log" ||
-    ! grep -Fq "$dangerous_video" "$log"; then
+    [ "$video_opts_arg" != "$expected_video_opts" ] ||
+    [ "$monitor_arg" != eDP-1 ] ||
+    [ "$video_path_arg" != "$dangerous_video" ]; then
     rm -rf -- "$fixture"
     printf 'FAIL: End4 restore is not isolated from the shell-switch process lifetime\n' >&2
     exit 1
@@ -722,7 +810,7 @@ run_end4_video_backend_simulation() {
   fi
   printf '%s\n' '[{"name":"eDP-1"},{"name":"HDMI-A-1"}]' >"$monitors"
   PATH="$fakebin:$PATH" XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" END4_TEST_LOG="$log" END4_TEST_MONITORS="$monitors" END4_TEST_MARKER="$marker" END4_TEST_SCOPE_ACTIVE="$scope_active" "$reconcile" --force
-  if [ "$(grep -Fc 'mpvpaper:-o no-audio loop' "$log")" -lt 2 ] ||
+  if [ "$(grep -Fc 'mpvpaper:' "$log")" -lt 3 ] ||
     [ "$(grep -Fc 'eDP-1' "$log")" -lt 2 ] ||
     [ "$(grep -Fc 'HDMI-A-1' "$log")" -lt 1 ]; then
     rm -rf -- "$fixture"
