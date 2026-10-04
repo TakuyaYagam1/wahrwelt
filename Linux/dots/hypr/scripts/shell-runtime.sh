@@ -246,7 +246,7 @@ PY
   opened="$(stat -Lc '%d:%i:%u:%a:%h' -- "$opened_path" 2>/dev/null || true)"
   visible="$(stat -c '%d:%i:%u:%a:%h' -- "$parent_pinned/$name" 2>/dev/null || true)"
   if [ "$opened" != "$identity" ] || [ "$visible" != "$identity" ] || [ -L "$parent_pinned/$name" ] ||
-    ! python3 -I -S - "$parent_fd" "$name" "$kind" "$identity" "$marker_identity" <<'PY'; then
+    ! python3 -I -S - "$parent_fd" "$name" "$kind" "$identity" "$marker_identity" <<'PY'
 import os
 import stat
 import sys
@@ -289,6 +289,7 @@ finally:
         os.close(marker_fd)
     os.close(file_fd)
 PY
+  then
     exec {wahrwelt_managed_regular_fd}<&-
     wahrwelt_managed_regular_fd=""
     return 1
@@ -1152,7 +1153,7 @@ PY
   visible="$(stat -c '%d:%i:%u:%a' -- "$parent_pinned/$name" 2>/dev/null || true)"
   if [ "$opened" != "$identity:${UID}:700" ] || [ "$visible" != "$identity:${UID}:700" ] ||
     [ -L "$parent_pinned/$name" ] ||
-    ! python3 -I -S - "$wahrwelt_private_state_directory_fd" "$kind" "$identity" "$marker_identity" <<'PY'; then
+    ! python3 -I -S - "$wahrwelt_private_state_directory_fd" "$kind" "$identity" "$marker_identity" <<'PY'
 import os
 import stat
 import sys
@@ -1187,6 +1188,7 @@ try:
 finally:
     os.close(fd)
 PY
+  then
     exec {wahrwelt_private_state_directory_fd}<&-
     wahrwelt_private_state_directory_fd=""
     return 1

@@ -91,7 +91,12 @@ let
   mkMySetupHost = mkWahrweltHost;
 
   flakeOutputs = import ./flake-packages.nix {
-    inherit layout nixpkgs system;
+    inherit
+      inputs
+      layout
+      nixpkgs
+      system
+      ;
   };
 
   presetHostVars =

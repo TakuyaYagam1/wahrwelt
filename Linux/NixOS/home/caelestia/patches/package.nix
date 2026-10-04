@@ -49,6 +49,9 @@ let
 
   shellBase = baseShell.override {
     caelestia-cli = cli;
+    # Keep one compiled QuickShell for every shell. Caelestia's withModules
+    # wrapper still supplies qtimageformats and m3shapes without recompiling it.
+    quickshell = inputs.quickshell.packages.${system}.default;
   };
 in
 {

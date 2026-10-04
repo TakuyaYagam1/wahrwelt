@@ -25,12 +25,14 @@
         "https://hyprland.cachix.org"
         "https://quickshell.cachix.org"
         "https://numtide.cachix.org"
+        "https://wahrwelt.cachix.org"
       ];
       trusted-substituters = [
         "https://nix-community.cachix.org"
         "https://hyprland.cachix.org"
         "https://quickshell.cachix.org"
         "https://numtide.cachix.org"
+        "https://wahrwelt.cachix.org"
       ];
       trusted-public-keys = [
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
@@ -38,6 +40,7 @@
         "hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc="
         "quickshell.cachix.org-1:tjWMR3PQd01gN6YtjSRUdHHHUgrSLFIgwqrCQjFXVOU="
         "numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE="
+        "wahrwelt.cachix.org-1:WLQwCcRx6rjWf9TRHfuj5NIvTc0M52jTz9uptJlwXhA="
       ];
 
       sandbox = true;

@@ -109,6 +109,20 @@ is expected for this config; the installer and checks use these binary caches:
 - `https://hyprland.cachix.org`
 - `https://quickshell.cachix.org`
 - `https://numtide.cachix.org`
+- `https://wahrwelt.cachix.org`
+
+The public Wahrwelt cache is configured to publish selected personal-preset
+QuickShell, Caelestia, Noctalia, Codex CLI, and OmniRouter builds from the
+`main` branch. The `Cache desktop builds` workflow also supports manual runs.
+Publishing requires the repository Actions secret
+`CACHIX_AUTH_TOKEN`; the token is never needed on machines that only install
+the configuration. Other packages still come from their usual substituters or
+build locally when a matching binary is unavailable. Claude Code, Claude Desktop,
+and Codex Desktop are not uploaded to this public cache because their package
+metadata marks them unfree. Happ also comes from an upstream binary package
+without redistribution metadata, and Portainer is an OCI image rather than a
+Nix build. The 5 GB cache limit can evict older revisions, so a cache hit is
+not guaranteed after every flake update.
 
 The first full build can still be large because this config includes multiple
 Wayland shells, Qt/QML packages, desktop apps, and optional CTF/development

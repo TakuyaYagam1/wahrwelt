@@ -95,9 +95,20 @@ buildNpmPackage' rec {
   installPhase = ''
     runHook preInstall
 
+    # The CLI imports TypeScript through the production tsx dependency.
+    # Prune only dev dependencies after the standalone server is assembled.
+    npm prune --omit=dev --ignore-scripts --offline
+
     mkdir -p $out/share/omnirouter
-    cp -a . $out/share/omnirouter/
-    rm -f $out/share/omnirouter/.env
+    test -f .build/next/standalone/server.js
+    test -f .build/next/standalone/dev/run-standalone.mjs
+    test -f bin/omniroute.mjs
+    # Retain the production CLI tree, then copy only the assembled server.
+    tar --exclude='./.build' --exclude='./.git' --exclude='./.env' \
+      --exclude='./node_modules/.cache' -cf - . \
+      | tar -C $out/share/omnirouter -xf -
+    mkdir -p $out/share/omnirouter/.build/next
+    cp -a .build/next/standalone $out/share/omnirouter/.build/next/
 
     mkdir -p $out/bin
     cat > $out/bin/omnirouter <<EOF

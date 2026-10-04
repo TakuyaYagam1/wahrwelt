@@ -1,0 +1,69 @@
+name: Cache desktop builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cache-builds.yml
+      - Linux/NixOS/home/caelestia/patches/**
+      - Linux/NixOS/home/noctalia/patches/**
+      - Linux/NixOS/lib/flake-packages.nix
+      - Linux/NixOS/lib/preset-flake.nix
+      - Linux/NixOS/pkgs/omnirouter.nix
+      - Linux/NixOS/presets/personal/flake.nix
+      - Linux/NixOS/presets/personal/flake.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cache-builds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31.11.1
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            substituters = https://cache.nixos.org https://nix-community.cachix.org https://hyprland.cachix.org https://quickshell.cachix.org https://numtide.cachix.org https://wahrwelt.cachix.org
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc= quickshell.cachix.org-1:tjWMR3PQd01gN6YtjSRUdHHHUgrSLFIgwqrCQjFXVOU= numtide.cachix.org-1:2ps1kLBUWjxIneOy1Ik6cQjb41X0iXVXeHigGmycPPE= wahrwelt.cachix.org-1:WLQwCcRx6rjWf9TRHfuj5NIvTc0M52jTz9uptJlwXhA=
+
+      - name: Build selected packages
+        id: build
+        env:
+          FLAKE: ./Linux/NixOS/presets/personal
+        run: |
+          set -euo pipefail
+          paths=()
+          for package in quickshell caelestia-cli caelestia-shell noctalia codex omnirouter; do
+            path="$(nix build --no-link --no-write-lock-file --print-out-paths "$FLAKE#$package")"
+            paths+=("$path")
+          done
+          printf 'paths=%s\n' "${paths[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish selected packages
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          FLAKE: ./Linux/NixOS/presets/personal
+          BUILD_PATHS: ${{ steps.build.outputs.paths }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CACHIX_AUTH_TOKEN" ]; then
+            echo '::error::CACHIX_AUTH_TOKEN repository secret is missing'
+            exit 1
+          fi
+          read -r -a paths <<< "$BUILD_PATHS"
+          if [ "${#paths[@]}" -ne 6 ]; then
+            echo '::error::Expected six built package paths'
+            exit 1
+          fi
+          nix run --no-write-lock-file "$FLAKE#cachix" -- push --jobs 2 --num-concurrent-chunks 2 wahrwelt "${paths[@]}"

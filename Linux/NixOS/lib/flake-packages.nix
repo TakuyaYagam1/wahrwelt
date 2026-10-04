@@ -1,4 +1,5 @@
 {
+  inputs,
   layout,
   nixpkgs,
   system,
@@ -15,6 +16,10 @@ let
   nixosSource = layout.nixos;
   dotsSource = layout.dots;
   installerSource = layout.installer;
+  caelestiaPackages = import ../home/caelestia/patches/package.nix {
+    inherit inputs system;
+    prev = flakePkgs;
+  };
 
   wahrweltRuntimeSource = flakePkgs.runCommand "wahrwelt-runtime-source" { } ''
     mkdir -p "$out"
@@ -73,12 +78,30 @@ let
   };
 
   packages = {
+    inherit (flakePkgs) cachix;
     claude-desktop = flakePkgs.callPackage ../pkgs/claude-desktop.nix { };
     omnirouter = flakePkgs.callPackage ../pkgs/omnirouter.nix { };
     inherit wahrwelt;
     wahrwelt-fs-helper = wahrwelt;
     mysetup = wahrwelt;
     default = wahrwelt;
+  }
+  // flakePkgs.lib.optionalAttrs (inputs ? quickshell) {
+    quickshell = inputs.quickshell.packages.${system}.default;
+  }
+  // flakePkgs.lib.optionalAttrs (inputs ? caelestia-shell) {
+    caelestia-cli = caelestiaPackages.cli;
+    caelestia-shell = caelestiaPackages.shell;
+  }
+  // flakePkgs.lib.optionalAttrs (inputs ? noctalia) {
+    noctalia =
+      (import ../home/noctalia/patches/package.nix {
+        inherit inputs system;
+        pkgs = flakePkgs;
+      }).v5;
+  }
+  // flakePkgs.lib.optionalAttrs (inputs ? codex) {
+    codex = inputs.codex.packages.${system}.default;
   };
 
   checks = {

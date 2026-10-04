@@ -71,7 +71,9 @@ let
     ];
     patchFlags = (old.patchFlags or [ "-p1" ]) ++ [ "--fuzz=0" ];
     nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.ffmpeg ];
-    mesonFlags = builtins.filter (flag: flag != "-Dtests=disabled") (old.mesonFlags or [ ]) ++ [ "-Dtests=enabled" ];
+    mesonFlags = builtins.filter (flag: flag != "-Dtests=disabled") (old.mesonFlags or [ ]) ++ [
+      "-Dtests=enabled"
+    ];
     buildPhase = ''
       runHook preBuild
       ninja noctalia lockscreen_video_player_test

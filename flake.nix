@@ -269,11 +269,17 @@
       installerOutputsFor =
         system:
         import ./Linux/NixOS/lib/flake-packages.nix {
-          inherit layout nixpkgs system;
+          inherit
+            inputs
+            layout
+            nixpkgs
+            system
+            ;
         };
 
       wahrweltPackageFor = system: (installerOutputsFor system).packages.wahrwelt;
       omnirouterPackageFor = system: (installerOutputsFor system).packages.omnirouter;
+      quickshellPackageFor = system: (installerOutputsFor system).packages.quickshell;
       claudeDesktopPackageFor = system: (installerOutputsFor system).packages.claude-desktop;
       wahrweltAppFor = system: {
         type = "app";
@@ -346,6 +352,7 @@
         wahrwelt-fs-helper = wahrweltPackageFor system;
         mysetup = self.packages.${system}.wahrwelt;
         omnirouter = omnirouterPackageFor system;
+        quickshell = quickshellPackageFor system;
         default = self.packages.${system}.wahrwelt;
       });
 
