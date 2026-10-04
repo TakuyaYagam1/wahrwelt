@@ -27,13 +27,12 @@ _:
       reboot = "systemctl reboot";
       poweroff = "systemctl poweroff";
 
-      docker = "podman";
-      dc = "podman-compose";
-      dps = "podman ps";
-      dpsa = "podman ps -a";
-      di = "podman images";
-      drm = "podman rm";
-      drmi = "podman rmi";
+      dc = "docker compose";
+      dps = "docker ps";
+      dpsa = "docker ps -a";
+      di = "docker images";
+      drm = "docker rm";
+      drmi = "docker rmi";
 
       k = "kubectl";
       kgp = "kubectl get pods";

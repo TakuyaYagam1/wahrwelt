@@ -95,7 +95,7 @@ func previewPackages(s config.State) []string {
 func previewServices(s config.State) []string {
 	return previewSettings(
 		previewSetting("OmniRouter", "Builds/enables the local OmniRouter package and module.", formatBool(s.Features.OmniRouter)),
-		previewSetting("Portainer", "Enables a localhost Docker management UI (requires Docker, enabled automatically).", formatBool(s.Features.Portainer)),
+		previewSetting("Portainer", "Enables a localhost container UI connected to the selected per-user engine.", formatBool(s.Features.Portainer)),
 		previewSetting("Observability", "Enables the localhost Grafana/Prometheus/Loki stack.", formatBool(s.Features.Observability)),
 	)
 }

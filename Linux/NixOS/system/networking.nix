@@ -47,7 +47,7 @@
     # Restrict dmesg to root (prevents info leakage about kernel/hardware)
     "kernel.dmesg_restrict" = 1;
 
-    # Required for rootless podman / user namespaces
+    # Required for rootless Docker and Podman user namespaces
     "kernel.unprivileged_userns_clone" = 1;
   };
 }

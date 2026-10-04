@@ -117,8 +117,30 @@ Presets are **cumulative** - each tier includes everything below it and adds mor
 | --- | --- | --- | --- |
 | `minimal` | **Text console only** (no display manager, no Hyprland) | Base system + core CLI/system tools, Wayland libraries/tools, and audio utilities (cava, pavucontrol). **No graphical desktop** - you log in at a TTY. | Servers, VMs, low-spec boxes, or anyone who just wants the CLI base. If you boot to a black screen with a blinking cursor, that is the console login working as intended - type your user and password. |
 | `desktop` | **The graphical Hyprland rice** | SDDM greeter + Hyprland compositor + three shell families and four runtime profiles (`caelestia`, `noctalia`, `end4`, `end4-pc`), plus everyday GUI apps (Firefox, Zen, Spotify, Telegram, Vesktop, LibreOffice, mpv, Obsidian, file manager, screenshot/calculator/terminal-multiplexer tools) and gaming/portal/font support. | Most people who want the desktop but not a dev or private-workstation load. This is the lowest preset that gives you a graphical session. |
-| `developer` | Same graphical desktop | Developer/API/container tooling: VS Code, API clients (yaak, ngrok), a SQLite TUI, Claude Code, Codex CLI, Codex Desktop, and container extras. | A workstation you also code on, without the full personal app pile. |
+| `developer` | Same graphical desktop | Developer/API tooling: VS Code, API clients (yaak, ngrok), a SQLite TUI, Claude Code, Codex CLI, Codex Desktop, and rootless Docker with Compose, Buildx, and lazydocker. | A workstation you also code on, without the full personal app pile. |
 | `personal` | Same graphical desktop | The full workstation load: extra office suites, Anytype, DBeaver/DataGrip, many editors/IDEs (Cursor, Zed, QtCreator, Android Studio), additional AI tools (gemini-cli, ollama, opencode), Flutter/Android tooling, plus games (Lutris, Heroic). | **My own machine, basically.** I built this preset specifically for my personal daily-driver, so it's opinionated and packed with my exact toolset - most people should stick to one of the first three. This is by far the heaviest build; on <16GB RAM keep `max-jobs` low (see the build-cores note above) to avoid OOM during the first build. |
+
+The `developer` and `personal` presets use rootless Docker by default. Docker Compose and Buildx are available with the Docker CLI, and lazydocker connects to the same per-user daemon as Portainer by default. Fish keeps `docker` as the real Docker command; `dc` expands to `docker compose`. An explicit `DOCKER_HOST` continues to select a custom endpoint for CLI tools.
+
+To select rootless Podman, set `wahrwelt.containers.engine = "podman"` in the host configuration. This changes the selected engine without removing or copying data. Images, containers, and volumes remain in the previous engine's storage. If Portainer was previously run by the rootful system service, its `/var/lib/portainer` data is left untouched; the new per-user service starts with separate state and requires a fresh first-visit admin setup. Portainer with rootless Podman is best-effort and is not officially supported by Portainer. Rootless Docker has practical limits: publishing ports below 1024 needs additional host configuration, and resource limits require cgroup v2 with systemd. See the [Docker rootless mode documentation](https://docs.docker.com/engine/security/rootless/) and its [known limitations](https://docs.docker.com/engine/security/rootless/troubleshoot/#known-limitations).
+
+After applying an engine change, log out and back in once so Fish drops an old
+`docker` alias and the session refreshes `DOCKER_HOST`. Check the default
+developer/personal setup with:
+
+```bash
+systemctl --user status docker.service
+echo "$DOCKER_HOST"
+type -a docker
+docker info --format '{{json .SecurityOptions}}'
+docker compose version
+docker buildx version
+```
+
+If Portainer is enabled, also check `systemctl --user status portainer.service`
+and visit `https://127.0.0.1:9443` for its fresh first-run admin setup. In a
+project containing a Compose file, run `docker compose up -d` and then
+`docker compose ps` to verify the engine can start a project.
 
 ### Windows
 

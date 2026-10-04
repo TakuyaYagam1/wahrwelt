@@ -44,6 +44,8 @@ lazydocker_probe="$(
           in
           if builtins.length candidates != 1 then
             builtins.throw "developer package set must have exactly one lazydocker"
+          else if (builtins.head candidates).outPath != fakeLazydocker.outPath then
+            builtins.throw "developer package set must use the native lazydocker package"
           else
             builtins.head candidates
         '
@@ -53,8 +55,8 @@ lazydocker_default_host="$(
     env -u DOCKER_HOST XDG_RUNTIME_DIR=/run/user/4242 \
         "$lazydocker_probe/bin/lazydocker"
 )"
-if [[ "$lazydocker_default_host" != "unix:///run/user/4242/podman/podman.sock" ]]; then
-    fail "Lazydocker does not default to the rootless Podman socket"
+if [[ -n "$lazydocker_default_host" ]]; then
+    fail "Lazydocker injects a Docker endpoint when DOCKER_HOST is unset"
 fi
 
 lazydocker_override_host="$(
@@ -308,8 +310,14 @@ reject_text "$nixos_dir/lib/package-sets/ctf/misc.nix" 'chromium' \
     "Chromium remains in the CTF package set"
 reject_text "$nixos_dir/services/portainer.nix" '@sha256:' \
     "Portainer image uses a digest suffix that the version-only updater does not manage"
+require_text "$repo_root/.github/workflows/update-portainer.yml" \
+    'system.config.services.portainer.image' \
+    "Portainer updater does not evaluate the selected service image option"
+reject_text "$repo_root/.github/workflows/update-portainer.yml" \
+    'virtualisation.oci-containers.containers.portainer.image' \
+    "Portainer updater still targets the old rootful OCI container image"
 portainer_image="$(sed -nE \
-    's/^[[:space:]]*image = "(portainer\/portainer-ce:[^"]+)";.*/\1/p' \
+    's/^[[:space:]]*default = "(portainer\/portainer-ce:[^"]+)";.*/\1/p' \
     "$nixos_dir/services/portainer.nix")"
 if [[ ! "$portainer_image" =~ ^portainer/portainer-ce:[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     fail "Portainer image is not a single updater-managed release tag: $portainer_image"
@@ -379,6 +387,10 @@ nix eval --no-write-lock-file --impure --json --expr '
     repoRoot = builtins.getEnv "WAHRWELT_REPO_ROOT";
     flake = builtins.getFlake ("path:" + repoRoot);
     system = "x86_64-linux";
+    pkgs = import flake.inputs.nixpkgs {
+      inherit system;
+      config.allowUnfree = true;
+    };
     defaults = import (nixosDir + "/hosts/NixOS/host-vars.nix");
     username = defaults.user.username;
     hostname = defaults.host.hostname;
@@ -395,6 +407,30 @@ nix eval --no-write-lock-file --impure --json --expr '
       extraModules = [ rootModule ];
     };
     base = baseHost.config;
+    hostVarsForPreset = preset: defaults // {
+      packages = defaults.packages // { inherit preset; };
+    };
+    mkHostConfig = hostname: hostVars: homeExtraModules:
+      (flake.lib.mkWahrweltHost {
+        inherit system hostname hostVars homeExtraModules;
+        extraModules = [ rootModule ];
+      }).config;
+    presetConfigs = builtins.listToAttrs (map (preset: {
+      name = preset;
+      value = let
+        host = mkHostConfig "wahrwelt-${preset}-container-check" (hostVarsForPreset preset) [];
+      in {
+        rootfulDocker = host.virtualisation.docker.enable;
+        rootlessDocker = host.virtualisation.docker.rootless.enable;
+        dockerSocketVariable = host.virtualisation.docker.rootless.setSocketVariable;
+        podman = host.virtualisation.podman.enable;
+        podmanCompat = host.virtualisation.podman.dockerCompat;
+        podmanSocket = host.virtualisation.podman.dockerSocket.enable;
+        dockerHost = host.home-manager.users.${username}.home.sessionVariables.DOCKER_HOST or null;
+        linger = host.users.users.${username}.linger;
+        dockerGroup = builtins.elem "docker" host.users.users.${username}.extraGroups;
+      };
+    }) [ "minimal" "desktop" "developer" "personal" ]);
     passwordHost = flake.lib.mkWahrweltHost {
       inherit system;
       hostname = "wahrwelt-password-check";
@@ -450,6 +486,20 @@ nix eval --no-write-lock-file --impure --json --expr '
       extraModules = [ rootModule ];
     };
     enabled = enabledHost.config;
+    podmanVars = defaults // {
+      packages = defaults.packages // { preset = "developer"; };
+      containers = (defaults.containers or {}) // { engine = "podman"; };
+      features = defaults.features // { portainer = true; };
+    };
+    podmanConfig = mkHostConfig "wahrwelt-podman-container-check" podmanVars [];
+    podmanHomePackages = map pkgs.lib.getName podmanConfig.home-manager.users.${username}.home.packages;
+    minimalPortainerVars = defaults // {
+      packages = defaults.packages // { preset = "minimal"; };
+      features = defaults.features // { portainer = true; };
+    };
+    minimalPortainerConfig = mkHostConfig "wahrwelt-minimal-portainer-check" minimalPortainerVars [];
+    portainerDockerService = enabled.systemd.user.services.portainer;
+    portainerPodmanService = podmanConfig.systemd.user.services.portainer;
     explicitDockerHost = "tcp://127.0.0.1:2375";
     explicitDockerHostConfig = (flake.lib.mkWahrweltHost {
       inherit system;
@@ -476,15 +526,55 @@ nix eval --no-write-lock-file --impure --json --expr '
     nodeExporter = enabled.services.prometheus.exporters.node.listenAddress;
     lokiHttp = enabled.services.loki.configuration.server.http_listen_address;
     lokiGrpc = enabled.services.loki.configuration.server.grpc_listen_address;
-    portainerImage = enabled.virtualisation.oci-containers.containers.portainer.image;
+    portainerImage = enabled.services.portainer.image;
+    presetContainers = presetConfigs;
     defaultDocker = base.virtualisation.docker.enable;
+    defaultRootlessDocker = base.virtualisation.docker.rootless.enable;
+    defaultDockerSocketVariable = base.virtualisation.docker.rootless.setSocketVariable;
     defaultPodmanCompat = base.virtualisation.podman.dockerCompat;
     defaultPodmanSocket = base.virtualisation.podman.dockerSocket.enable;
     defaultDockerHost = base.home-manager.users.${username}.home.sessionVariables.DOCKER_HOST or null;
     portainerDocker = enabled.virtualisation.docker.enable;
+    portainerRootlessDocker = enabled.virtualisation.docker.rootless.enable;
     portainerPodmanCompat = enabled.virtualisation.podman.dockerCompat;
     portainerPodmanSocket = enabled.virtualisation.podman.dockerSocket.enable;
     portainerDockerHost = enabled.home-manager.users.${username}.home.sessionVariables.DOCKER_HOST or null;
+    portainerDockerRequires = portainerDockerService.requires;
+    portainerDockerAfter = portainerDockerService.after;
+    portainerDockerPartOf = portainerDockerService.partOf;
+    portainerDockerStateDirectory = portainerDockerService.serviceConfig.StateDirectory;
+    portainerDockerStateDirectoryMode = portainerDockerService.serviceConfig.StateDirectoryMode;
+    portainerDockerRestartPreventExitStatus = portainerDockerService.serviceConfig.RestartPreventExitStatus;
+    portainerDockerStart = portainerDockerService.serviceConfig.ExecStart;
+    portainerDockerStartContext = builtins.getContext portainerDockerService.serviceConfig.ExecStart;
+    portainerDockerStop = portainerDockerService.serviceConfig.ExecStop;
+    portainerDockerStopContext = builtins.getContext portainerDockerService.serviceConfig.ExecStop;
+    portainerPodmanRequires = portainerPodmanService.requires;
+    portainerPodmanAfter = portainerPodmanService.after;
+    portainerPodmanPartOf = portainerPodmanService.partOf;
+    portainerPodmanStateDirectory = portainerPodmanService.serviceConfig.StateDirectory;
+    portainerPodmanStateDirectoryMode = portainerPodmanService.serviceConfig.StateDirectoryMode;
+    portainerPodmanStart = portainerPodmanService.serviceConfig.ExecStart;
+    portainerPodmanStartContext = builtins.getContext portainerPodmanService.serviceConfig.ExecStart;
+    portainerOciContainer = enabled.virtualisation.oci-containers.containers.portainer or null;
+    podmanOverrideRootfulDocker = podmanConfig.virtualisation.docker.enable;
+    podmanOverrideRootlessDocker = podmanConfig.virtualisation.docker.rootless.enable;
+    podmanOverride = podmanConfig.virtualisation.podman.enable;
+    podmanOverrideDockerCompat = podmanConfig.virtualisation.podman.dockerCompat;
+    podmanOverrideDockerSocket = podmanConfig.virtualisation.podman.dockerSocket.enable;
+    podmanOverrideDockerHost = podmanConfig.home-manager.users.${username}.home.sessionVariables.DOCKER_HOST or null;
+    podmanOverrideLinger = podmanConfig.users.users.${username}.linger;
+    podmanDockerClient = builtins.elem (pkgs.lib.getName pkgs.docker-client) podmanHomePackages;
+    podmanComposeClient = builtins.elem "podman-compose" podmanHomePackages;
+    podmanDesktopClient = builtins.elem "podman-desktop" podmanHomePackages;
+    podmanHomePackages = podmanHomePackages;
+    minimalPortainerRootfulDocker = minimalPortainerConfig.virtualisation.docker.enable;
+    minimalPortainerRootlessDocker = minimalPortainerConfig.virtualisation.docker.rootless.enable;
+    minimalPortainerPodman = minimalPortainerConfig.virtualisation.podman.enable;
+    minimalPortainerDockerHost = minimalPortainerConfig.home-manager.users.${username}.home.sessionVariables.DOCKER_HOST or null;
+    minimalPortainerLinger = minimalPortainerConfig.users.users.${username}.linger;
+    minimalPortainerRequires = minimalPortainerConfig.systemd.user.services.portainer.requires;
+    minimalPortainerStart = minimalPortainerConfig.systemd.user.services.portainer.serviceConfig.ExecStart;
     explicitDockerHost = explicitDockerHostConfig.home-manager.users.${username}.home.sessionVariables.DOCKER_HOST;
     trustedUsers = base.nix.settings.trusted-users;
     primaryUserExtraGroups = base.users.users.${username}.extraGroups;
@@ -511,14 +601,82 @@ if ! jq -e --arg expected_portainer_image "$portainer_image" '
   .lokiGrpc == "127.0.0.1" and
   .portainerImage == $expected_portainer_image and
   .defaultDocker == false and
-  .defaultPodmanCompat == true and
+  .defaultRootlessDocker == true and
+  .defaultDockerSocketVariable == true and
+  .defaultPodmanCompat == false and
   .defaultPodmanSocket == false and
-  .defaultDockerHost == "unix://$XDG_RUNTIME_DIR/podman/podman.sock" and
-  .portainerDocker == true and
+  .defaultDockerHost == "unix://$XDG_RUNTIME_DIR/docker.sock" and
+  .portainerDocker == false and
+  .portainerRootlessDocker == true and
   .portainerPodmanCompat == false and
   .portainerPodmanSocket == false and
-  .portainerDockerHost == "unix://$XDG_RUNTIME_DIR/podman/podman.sock" and
+  .portainerDockerHost == "unix://$XDG_RUNTIME_DIR/docker.sock" and
+  .portainerDockerRequires == ["docker.service"] and
+  .portainerDockerAfter == ["docker.service"] and
+  .portainerDockerPartOf == ["docker.service"] and
+  .portainerDockerStateDirectory == "portainer" and
+  .portainerDockerStateDirectoryMode == "0700" and
+  .portainerDockerRestartPreventExitStatus == "42" and
+  (.portainerDockerStart | split(" ")[0] | endswith("-portainer-start")) and
+  (.portainerDockerStartContext | keys | any(endswith("-portainer-start.drv"))) and
+  (.portainerDockerStopContext | keys | any(endswith("-portainer-stop.drv"))) and
+  .portainerPodmanRequires == ["podman.socket"] and
+  .portainerPodmanAfter == ["podman.socket"] and
+  .portainerPodmanPartOf == ["podman.socket"] and
+  .portainerPodmanStateDirectory == "portainer" and
+  .portainerPodmanStateDirectoryMode == "0700" and
+  (.portainerPodmanStart | split(" ")[0] | endswith("-portainer-start")) and
+  (.portainerPodmanStartContext | keys | any(endswith("-portainer-start.drv"))) and
+  .portainerOciContainer == null and
+  .podmanOverrideRootfulDocker == false and
+  .podmanOverrideRootlessDocker == false and
+  .podmanOverride == true and
+  .podmanOverrideDockerCompat == false and
+  .podmanOverrideDockerSocket == false and
+  .podmanOverrideDockerHost == "unix://$XDG_RUNTIME_DIR/podman/podman.sock" and
+  .podmanOverrideLinger == true and
+  .podmanDockerClient == true and
+  .podmanComposeClient == true and
+  .podmanDesktopClient == true and
+  ([.podmanHomePackages[] | select(. == "docker" or . == "podman-compose" or . == "podman-desktop")] | length == 3) and
+  .minimalPortainerRootfulDocker == false and
+  .minimalPortainerRootlessDocker == true and
+  .minimalPortainerPodman == false and
+  .minimalPortainerDockerHost == "unix://$XDG_RUNTIME_DIR/docker.sock" and
+  .minimalPortainerLinger == true and
+  .minimalPortainerRequires == ["docker.service"] and
+  (.minimalPortainerStart | split(" ")[0] | endswith("-portainer-start")) and
   .explicitDockerHost == "tcp://127.0.0.1:2375" and
+  .presetContainers.minimal.rootfulDocker == false and
+  .presetContainers.minimal.rootlessDocker == false and
+  .presetContainers.minimal.podman == false and
+  .presetContainers.minimal.dockerHost == null and
+  (.presetContainers.minimal.linger // false) == false and
+  .presetContainers.minimal.dockerGroup == false and
+  .presetContainers.desktop.rootfulDocker == false and
+  .presetContainers.desktop.rootlessDocker == false and
+  .presetContainers.desktop.podman == false and
+  .presetContainers.desktop.dockerHost == null and
+  (.presetContainers.desktop.linger // false) == false and
+  .presetContainers.desktop.dockerGroup == false and
+  .presetContainers.developer.rootfulDocker == false and
+  .presetContainers.developer.rootlessDocker == true and
+  .presetContainers.developer.dockerSocketVariable == true and
+  .presetContainers.developer.podman == false and
+  .presetContainers.developer.podmanCompat == false and
+  .presetContainers.developer.podmanSocket == false and
+  .presetContainers.developer.dockerHost == "unix://$XDG_RUNTIME_DIR/docker.sock" and
+  .presetContainers.developer.linger == true and
+  .presetContainers.developer.dockerGroup == false and
+  .presetContainers.personal.rootfulDocker == false and
+  .presetContainers.personal.rootlessDocker == true and
+  .presetContainers.personal.dockerSocketVariable == true and
+  .presetContainers.personal.podman == false and
+  .presetContainers.personal.podmanCompat == false and
+  .presetContainers.personal.podmanSocket == false and
+  .presetContainers.personal.dockerHost == "unix://$XDG_RUNTIME_DIR/docker.sock" and
+  .presetContainers.personal.linger == true and
+  .presetContainers.personal.dockerGroup == false and
   (.trustedUsers | length > 0 and all(. == "root")) and
   (.primaryUserExtraGroups | index("docker")) == null and
   ([.sudoRules[].commands[].options[]?] | index("NOPASSWD")) == null and
@@ -528,6 +686,137 @@ if ! jq -e --arg expected_portainer_image "$portainer_image" '
 ' "$test_root/evaluated.json" >/dev/null; then
     jq . "$test_root/evaluated.json" >&2
     fail "evaluated Nix hardening contract does not match"
+fi
+
+docker_start_drv="$(jq -r '.portainerDockerStartContext | keys[] | select(endswith("-portainer-start.drv"))' "$test_root/evaluated.json")"
+docker_stop_drv="$(jq -r '.portainerDockerStopContext | keys[] | select(endswith("-portainer-stop.drv"))' "$test_root/evaluated.json")"
+podman_start_drv="$(jq -r '.portainerPodmanStartContext | keys[] | select(endswith("-portainer-start.drv"))' "$test_root/evaluated.json")"
+if [[ -z "$docker_start_drv" || -z "$docker_stop_drv" || -z "$podman_start_drv" ]]; then
+    fail "could not resolve generated Portainer start/stop helper derivations"
+elif nix build --no-link --no-write-lock-file --impure \
+    "$docker_start_drv^out" "$docker_stop_drv^out" "$podman_start_drv^out" >/dev/null; then
+    docker_start="$(jq -r '.portainerDockerStart | split(" ")[0]' "$test_root/evaluated.json")"
+    docker_stop="$(jq -r '.portainerDockerStop | split(" ")[0]' "$test_root/evaluated.json")"
+    podman_start="$(jq -r '.portainerPodmanStart | split(" ")[0]' "$test_root/evaluated.json")"
+    # shellcheck disable=SC2016
+    require_text "$docker_start" '--host unix://$XDG_RUNTIME_DIR/docker.sock' \
+        "Docker Portainer start helper does not select its rootless socket"
+    # shellcheck disable=SC2016
+    require_text "$docker_start" '$XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock' \
+        "Docker Portainer start helper does not share the selected engine socket"
+    require_text "$docker_start" '--cap-drop=ALL' \
+        "Docker Portainer start helper does not drop all capabilities"
+    # shellcheck disable=SC2016
+    require_text "$podman_start" '$XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock' \
+        "Podman Portainer start helper does not mount its selected socket"
+
+    fake_engine="$test_root/fake-engine"
+    engine_trace="$test_root/fake-engine.trace"
+    expected_trace="$test_root/fake-engine.expected"
+    cat > "$fake_engine" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+printf '%s\0' "$@" >> "$FAKE_ENGINE_TRACE"
+for arg in "$@"; do
+    if [[ "$arg" == inspect ]]; then
+        if [[ -n "$FAKE_INSPECT_OUTPUT" ]]; then
+            printf '%s\n' "$FAKE_INSPECT_OUTPUT"
+        fi
+        exit "${FAKE_INSPECT_STATUS:-0}"
+    fi
+    if [[ "$arg" == stop ]]; then
+        exit 0
+    fi
+    if [[ "$arg" == run ]]; then
+        exit 0
+    fi
+done
+exit 64
+EOF
+    chmod 0700 "$fake_engine"
+
+    expected_id='0123456789abcdef0123456789abcdef'
+    expected_template='{{.Id}} {{ index .Config.Labels "io.wahrwelt.service" }}'
+    run_portainer_stop_case() {
+        local case_name="$1"
+        local inspection_output="$2"
+        local inspection_status="$3"
+        local managed_id="$4"
+
+        : > "$engine_trace"
+        : > "$expected_trace"
+        if ! FAKE_ENGINE_TRACE="$engine_trace" \
+            FAKE_INSPECT_OUTPUT="$inspection_output" \
+            FAKE_INSPECT_STATUS="$inspection_status" \
+            XDG_RUNTIME_DIR=/run/user/4242 \
+            "$docker_stop" "$fake_engine"; then
+            fail "Portainer ExecStop helper failed for $case_name container"
+            return
+        fi
+
+        printf '%s\0' --host 'unix:///run/user/4242/docker.sock' \
+            inspect --format "$expected_template" portainer >> "$expected_trace"
+        if [[ -n "$managed_id" ]]; then
+            printf '%s\0' --host 'unix:///run/user/4242/docker.sock' \
+                stop "$managed_id" >> "$expected_trace"
+        fi
+        if ! cmp -s "$expected_trace" "$engine_trace"; then
+            fail "Portainer ExecStop issued unexpected Docker CLI arguments for $case_name container"
+        fi
+    }
+
+    run_portainer_stop_case missing '' 1 ''
+    run_portainer_stop_case foreign "$expected_id another-service" 0 ''
+    run_portainer_stop_case malformed 'short portainer' 0 ''
+    run_portainer_stop_case managed "$expected_id portainer" 0 "$expected_id"
+
+    run_portainer_start_case() {
+        local case_name="$1"
+        local inspection_status="$2"
+        local expected_status="$3"
+        local expect_run="$4"
+        local command_status
+
+        : > "$engine_trace"
+        : > "$expected_trace"
+        if FAKE_ENGINE_TRACE="$engine_trace" \
+            FAKE_INSPECT_OUTPUT='' \
+            FAKE_INSPECT_STATUS="$inspection_status" \
+            XDG_RUNTIME_DIR=/run/user/4242 \
+            STATE_DIRECTORY=/run/user/4242/portainer \
+            "$docker_start" "$fake_engine" >/dev/null 2>&1; then
+            command_status=0
+        else
+            command_status=$?
+        fi
+        if [[ "$command_status" -ne "$expected_status" ]]; then
+            fail "Portainer ExecStart returned $command_status for $case_name container, expected $expected_status"
+        fi
+
+        printf '%s\0' --host 'unix:///run/user/4242/docker.sock' inspect portainer >> "$expected_trace"
+        if [[ "$expect_run" == true ]]; then
+            printf '%s\0' --host 'unix:///run/user/4242/docker.sock' run \
+                --name=portainer \
+                --label=io.wahrwelt.service=portainer \
+                --rm \
+                --publish=127.0.0.1:9443:9443 \
+                --cap-drop=ALL \
+                --security-opt=no-new-privileges \
+                --read-only \
+                --tmpfs=/tmp:rw,noexec,nosuid,size=64m \
+                --volume=/run/user/4242/docker.sock:/var/run/docker.sock \
+                --volume=/run/user/4242/portainer:/data \
+                "$portainer_image" >> "$expected_trace"
+        fi
+        if ! cmp -s "$expected_trace" "$engine_trace"; then
+            fail "Portainer ExecStart issued unexpected Docker CLI arguments for $case_name container"
+        fi
+    }
+
+    run_portainer_start_case collision 0 42 false
+    run_portainer_start_case missing 1 0 true
+else
+    fail "could not realize generated Portainer helper scripts"
 fi
 
 if ((status != 0)); then

@@ -36,7 +36,6 @@
     warp-terminal
     termius
     jetbrains.datagrip
-    podman-desktop
     code-cursor
     zed-editor-fhs
     qtcreator

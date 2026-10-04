@@ -16,7 +16,7 @@ func serviceFields(s *session) []huh.Field {
 			Value(&s.state.Features.OmniRouter),
 		huh.NewConfirm().
 			Title("Enable Portainer").
-			Description("Enables a localhost Docker management UI (container UI for the Docker daemon). Requires Docker, which is enabled automatically. Portainer starts at https://127.0.0.1:9443 - set the admin password on first visit.").
+			Description("Enables a localhost container management UI connected to the selected per-user engine. Portainer starts at https://127.0.0.1:9443 - set the admin password on first visit.").
 			Value(&s.state.Features.Portainer),
 		huh.NewConfirm().
 			Title("Enable Observability").

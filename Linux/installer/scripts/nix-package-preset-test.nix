@@ -107,6 +107,26 @@ let
     inherit pkgs pkgs-stable;
     lib = pkgs.lib;
   };
+  packageNames =
+    preset:
+    let
+      packages = packageSets.forPreset preset;
+    in
+    map pkgs.lib.getName (packages.systemPackages ++ packages.developmentPackages);
+  hasAll = names: expectedNames: builtins.all (name: builtins.elem name names) expectedNames;
+  hasNone = names: forbiddenNames: !(builtins.any (name: builtins.elem name names) forbiddenNames);
+  minimalPackages = packageNames "minimal";
+  desktopPackages = packageNames "desktop";
+  developerPackages = packageNames "developer";
+  personalPackages = packageNames "personal";
+  dockerTools = [
+    "docker-compose"
+    "docker-buildx"
+    "lazydocker"
+  ];
+  homePackageSource = builtins.readFile (nixosDir + "/lib/package-sets/home.nix");
+  systemPackageSource = builtins.readFile (nixosDir + "/lib/package-sets/system.nix");
+  defaultPodmanTools = [ "podman-compose" ];
   minimalSystemNames = map pkgs.lib.getName (packageSets.forPreset "minimal").systemPackages;
   desktopSystemNames = map pkgs.lib.getName (packageSets.forPreset "desktop").systemPackages;
   minimalHomeNames = map pkgs.lib.getName (packageSets.forPreset "minimal").homePackages;
@@ -139,6 +159,17 @@ let
   mimeDefaults = desktopHome.config.xdg.mimeApps.defaultApplications;
 in
 assert fakeLayers.presets == expected;
+assert hasNone minimalPackages dockerTools;
+assert hasNone desktopPackages dockerTools;
+assert hasAll developerPackages dockerTools;
+assert hasAll personalPackages dockerTools;
+assert hasNone minimalPackages defaultPodmanTools;
+assert hasNone desktopPackages defaultPodmanTools;
+assert hasNone developerPackages defaultPodmanTools;
+assert hasNone personalPackages defaultPodmanTools;
+assert builtins.replaceStrings [ "podman-desktop" ] [ "" ] homePackageSource == homePackageSource;
+assert
+  builtins.replaceStrings [ "podman-compose" ] [ "" ] systemPackageSource == systemPackageSource;
 assert !(builtins.elem "neovim" minimalSystemNames);
 assert !(builtins.elem "btop" minimalSystemNames);
 assert builtins.elem "neovim" desktopSystemNames;

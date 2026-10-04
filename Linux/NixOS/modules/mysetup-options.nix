@@ -81,6 +81,19 @@ let
         };
         default = { };
       };
+      containers = mkOption {
+        type = types.submodule {
+          options.engine = mkOption {
+            type = types.enum [
+              "docker"
+              "podman"
+            ];
+            default = "docker";
+            description = "Engine selected for developer tools and the Portainer feature.";
+          };
+        };
+        default = { };
+      };
       hardware = mkOption {
         type = types.submodule {
           options.gpu = mkOption {

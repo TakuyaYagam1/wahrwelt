@@ -118,7 +118,7 @@ jobs:
               system = f.nixosConfigurations.NixOS.extendModules {
                 modules = [{ mysetup.features.portainer = lib.mkForce true; }];
               };
-            in system.config.virtualisation.oci-containers.containers.portainer.image
+            in system.config.services.portainer.image
           ')"
 
           want="portainer/portainer-ce:${{ steps.release.outputs.version }}"

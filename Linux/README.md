@@ -229,10 +229,45 @@ breakdown is in the [root README](../README.md#package-presets); in short:
   screen, Hyprland, three shell families and four runtime profiles
   (`caelestia`, `noctalia`, `end4`, `end4-pc`), and everyday GUI apps (browser,
   chat, office, media, file manager).
-- `developer`: `desktop` plus developer/API/container tooling, Claude Code,
-  Codex CLI, and Codex Desktop.
+- `developer`: `desktop` plus developer/API tooling, rootless Docker with
+  Compose and Buildx, lazydocker, Claude Code, Codex CLI, and Codex Desktop.
 - `personal`: `developer` plus the full private-workstation load - extra apps,
   IDEs, additional AI tools, and games. This is the heaviest build.
+
+The developer and personal presets use rootless Docker by default. Portainer
+and lazydocker connect to the same per-user engine socket by default. Fish
+leaves `docker` as the real Docker command, and `dc` expands to `docker compose`.
+An explicit `DOCKER_HOST` continues to select a custom endpoint for CLI tools.
+To select rootless Podman, set `wahrwelt.containers.engine = "podman"` in the
+host configuration. This does not remove or copy existing data: images,
+containers, and volumes remain in the previous engine's storage. If Portainer
+was previously run by the rootful system service, its `/var/lib/portainer` data
+is left untouched; the new per-user service starts with separate state and
+requires a fresh first-visit admin setup. Portainer with rootless Podman is
+best-effort and is not officially supported by Portainer.
+
+Rootless Docker has practical limits. Publishing ports below 1024 needs
+additional host configuration, and resource limits require cgroup v2 with
+systemd. See the [Docker rootless mode documentation](https://docs.docker.com/engine/security/rootless/)
+and its [known limitations](https://docs.docker.com/engine/security/rootless/troubleshoot/#known-limitations).
+
+After applying an engine change, log out and back in once so Fish drops an old
+`docker` alias and the session refreshes `DOCKER_HOST`. Check the default
+developer/personal setup with:
+
+```bash
+systemctl --user status docker.service
+echo "$DOCKER_HOST"
+type -a docker
+docker info --format '{{json .SecurityOptions}}'
+docker compose version
+docker buildx version
+```
+
+If Portainer is enabled, also check `systemctl --user status portainer.service`
+and visit `https://127.0.0.1:9443` for its fresh first-run admin setup. In a
+project containing a Compose file, run `docker compose up -d` and then
+`docker compose ps` to verify the engine can start a project.
 
 Steam does not open Remote Play, dedicated-server, or local-transfer firewall
 ports automatically. Opt in to only the ports required by the current host.

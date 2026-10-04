@@ -88,7 +88,7 @@ in
     ++ hyprlandQtUtils;
   systemDeveloper = with pkgs; [
     docker-compose
-    podman-compose
+    docker-buildx
     yazi
     delta
   ];
