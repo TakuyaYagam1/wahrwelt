@@ -87,6 +87,37 @@ class PcSettingsPreviewTest(unittest.TestCase):
                 self.assertEqual(patch_preview(source, "QuickConfig fixture"), expected)
 
 
+class PcSidebarBannerTest(unittest.TestCase):
+    def test_banner_patch_accepts_upstream_indentation_changes(self) -> None:
+        for indentation in (32, 36):
+            with self.subTest(indentation=indentation):
+                indent = " " * indentation
+                source = (
+                    f'{indent}source: Config.options.sidebar.bannerImage !== "" \n'
+                    f"{indent}    ? Config.options.sidebar.bannerImage \n"
+                    f"{indent}    : Config.options.background.wallpaperPath\n"
+                )
+                expected = source.replace(
+                    ": Config.options.background.wallpaperPath",
+                    ": Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+                )
+                self.assertEqual(
+                    LIVE_WALLPAPERS.patch_pc_sidebar_banner(source, "Sidebar fixture"),
+                    expected,
+                )
+
+    def test_banner_patch_rejects_missing_or_ambiguous_expression(self) -> None:
+        expression = (
+            'source: Config.options.sidebar.bannerImage !== ""\n'
+            '    ? Config.options.sidebar.bannerImage\n'
+            '    : Config.options.background.wallpaperPath\n'
+        )
+        for source in (expression.replace("!==", "==="), expression * 2):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(SystemExit, "expected 1 matches"):
+                    LIVE_WALLPAPERS.patch_pc_sidebar_banner(source, "Sidebar fixture")
+
+
 class WallpaperServiceDriftTest(unittest.TestCase):
     def test_unreviewed_service_is_rejected_without_replacing_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -229,6 +229,30 @@ def patch_pc_settings_preview(text: str, label: str) -> str:
     return "".join(lines)
 
 
+def patch_pc_sidebar_banner(text: str, label: str) -> str:
+    expression = (
+        'source: Config.options.sidebar.bannerImage !== ""',
+        "? Config.options.sidebar.bannerImage",
+        ": Config.options.background.wallpaperPath",
+    )
+    lines = text.splitlines(keepends=True)
+    matches = [
+        index
+        for index in range(len(lines) - 2)
+        if tuple(line.strip() for line in lines[index : index + 3]) == expression
+    ]
+    if len(matches) != 1:
+        fail(f"{label}: expected 1 matches, found {len(matches)}")
+
+    index = matches[0] + 2
+    lines[index] = lines[index].replace(
+        ": Config.options.background.wallpaperPath",
+        ": Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
+        1,
+    )
+    return "".join(lines)
+
+
 def apply_anchor_patch(root: Path, patch_file: Path, marker: str) -> None:
     result = subprocess.run(
         ["patch", "--fuzz=0", "--forward", "--batch", "-p1", "-i", str(patch_file)],
@@ -956,11 +980,12 @@ def patch_image_consumers(root: Path, variant: str) -> None:
             "                            source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
             "pC overview fallback",
         )
-        replace(
-            "modules/ii/sidebarRight/SidebarRightContent.qml",
-            "                                    source: Config.options.sidebar.bannerImage !== \"\" \n                                        ? Config.options.sidebar.bannerImage \n                                        : Config.options.background.wallpaperPath",
-            "                                    source: Config.options.sidebar.bannerImage !== \"\" \n                                        ? Config.options.sidebar.bannerImage \n                                        : Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)",
-            "pC sidebar banner fallback",
+        sidebar_path = tree / "modules/ii/sidebarRight/SidebarRightContent.qml"
+        sidebar_path.write_text(
+            patch_pc_sidebar_banner(
+                sidebar_path.read_text(),
+                f"pC sidebar banner fallback in {sidebar_path}",
+            )
         )
         usercard_path = tree / "modules/ii/background/widgets/usercard/UserCardWidget.qml"
         usercard_text = usercard_path.read_text()
