@@ -30,6 +30,7 @@
   nspr,
   nss,
   pango,
+  pipewire,
   systemd,
   vulkan-loader,
   libayatana-appindicator,
@@ -94,6 +95,7 @@ stdenv.mkDerivation {
     nspr
     nss
     pango
+    pipewire
     systemd
     vulkan-loader
     libayatana-appindicator
