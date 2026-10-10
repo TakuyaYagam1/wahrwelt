@@ -53,7 +53,7 @@ in
     enable = lib.mkEnableOption "Portainer container management UI";
     image = lib.mkOption {
       type = lib.types.str;
-      default = "portainer/portainer-ce:2.45.1";
+      default = "portainer/portainer-ce:2.45.2";
       description = "Portainer Server image used by the selected container engine.";
     };
   };
