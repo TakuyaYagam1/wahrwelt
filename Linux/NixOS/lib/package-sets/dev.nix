@@ -34,7 +34,7 @@ let
     mypy
   ];
   goTools = with pkgs; [
-    go
+    go_latest
     gopls
     delve
     golangci-lint

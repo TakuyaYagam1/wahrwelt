@@ -119,6 +119,9 @@ let
   desktopPackages = packageNames "desktop";
   developerPackages = packageNames "developer";
   personalPackages = packageNames "personal";
+  developerGo = builtins.filter (package: (package.pname or "") == "go") (
+    (packageSets.forPreset "developer").developmentPackages
+  );
   dockerTools = [
     "docker-compose"
     "docker-buildx"
@@ -163,6 +166,8 @@ assert hasNone minimalPackages dockerTools;
 assert hasNone desktopPackages dockerTools;
 assert hasAll developerPackages dockerTools;
 assert hasAll personalPackages dockerTools;
+assert builtins.length developerGo == 1;
+assert (builtins.head developerGo).outPath == pkgs.go_latest.outPath;
 assert hasNone minimalPackages defaultPodmanTools;
 assert hasNone desktopPackages defaultPodmanTools;
 assert hasNone developerPackages defaultPodmanTools;
