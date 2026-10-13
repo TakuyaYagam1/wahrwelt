@@ -28,7 +28,7 @@ let
     cp -a ${installerSource} "$out/installer"
   '';
 
-  wahrwelt = flakePkgs.buildGoModule {
+  wahrwelt = flakePkgs.buildGoLatestModule {
     pname = "wahrwelt";
     version = "0.1.0";
     src = installerSource;
@@ -36,7 +36,7 @@ let
       "cmd/wahrwelt"
       "cmd/wahrwelt-fs-helper"
     ];
-    vendorHash = "sha256-t56VdyNPlGtPmLBvFuPrONvoPEOvvJn9foNmUBQlIeI=";
+    vendorHash = "sha256-fALQEQOhJoJBH/W2MjhtHz+LSoepqnQnQ7JcoPd9rHg=";
     nativeBuildInputs = [ flakePkgs.makeWrapper ];
     ldflags = [
       "-s"

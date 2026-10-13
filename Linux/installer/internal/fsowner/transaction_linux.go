@@ -3,10 +3,10 @@
 package fsowner
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"uuid"
 
 	"golang.org/x/sys/unix"
 )
@@ -255,10 +256,7 @@ func Remove(transactionPath, target string) error {
 	if current.Identity.Kind == KindAbsent {
 		return nil
 	}
-	stage, err := randomName(".wahrwelt-runtime-stage-")
-	if err != nil {
-		return err
-	}
+	stage := randomName(".wahrwelt-runtime-stage-")
 	if err := unix.Renameat2(parent.fd, filepath.Base(target), parent.fd, stage, unix.RENAME_NOREPLACE); err != nil {
 		return fmt.Errorf("remove tracked target %s: %w", target, err)
 	}
@@ -292,13 +290,10 @@ func Rollback(transactionPath string) error {
 		}
 		base := filepath.Base(entry.Path)
 		if entry.Original.Identity.Kind == KindAbsent {
-			stage, nameErr := randomName(".wahrwelt-runtime-stage-")
-			if nameErr == nil {
-				nameErr = unix.Renameat2(parent.fd, base, parent.fd, stage, unix.RENAME_NOREPLACE)
-			}
-			if nameErr != nil {
+			stage := randomName(".wahrwelt-runtime-stage-")
+			if err := unix.Renameat2(parent.fd, base, parent.fd, stage, unix.RENAME_NOREPLACE); err != nil {
 				_ = parent.Close()
-				return fmt.Errorf("rollback %s: %w", entry.Path, nameErr)
+				return fmt.Errorf("rollback %s: %w", entry.Path, err)
 			}
 			entry.Current, entry.Recovery, entry.RecoveryState = absentState(), stage, &current
 		} else {
@@ -456,11 +451,11 @@ func loadTransaction(path string) (*transaction, error) {
 		return nil, err
 	}
 	tx := &transaction{path: absolute, name: filepath.Base(absolute), root: root, dir: dir}
-	if err := readJSONAt(dir.fd, markerName, &tx.marker); err != nil {
+	if tx.marker, err = dir.readJSON[transactionMarker](markerName); err != nil {
 		tx.close()
 		return nil, fmt.Errorf("not a marker-owned v1 transaction: %w", err)
 	}
-	if err := readJSONAt(dir.fd, journalName, &tx.journal); err != nil {
+	if tx.journal, err = dir.readJSON[transactionJournal](journalName); err != nil {
 		tx.close()
 		return nil, fmt.Errorf("invalid marker-owned v1 journal: %w", err)
 	}
@@ -487,10 +482,7 @@ func (tx *transaction) entry(path string) *journalEntry {
 }
 
 func (tx *transaction) save() error {
-	temporary, err := randomName(".journal-next-")
-	if err != nil {
-		return err
-	}
+	temporary := randomName(".journal-next-")
 	if err := writeJSONAt(tx.dir.fd, temporary, tx.journal); err != nil {
 		return err
 	}
@@ -563,10 +555,7 @@ func inspectFileState(parentFD int, name string) (fileState, error) {
 }
 
 func createCandidate(parentFD int, content []byte, mode fs.FileMode) (string, fileState, error) {
-	name, err := randomName(".wahrwelt-runtime-stage-")
-	if err != nil {
-		return "", fileState{}, err
-	}
+	name := randomName(".wahrwelt-runtime-stage-")
 	fd, err := unix.Openat(parentFD, name, unix.O_WRONLY|unix.O_CLOEXEC|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return "", fileState{}, err
@@ -624,10 +613,7 @@ func ensurePrivateDirectory(path string) (*Directory, error) {
 
 func mkdirRandomAt(parentFD int, prefix string) (string, error) {
 	for range 32 {
-		name, err := randomName(prefix)
-		if err != nil {
-			return "", err
-		}
+		name := randomName(prefix)
 		if err := unix.Mkdirat(parentFD, name, 0o700); err == nil {
 			return name, nil
 		} else if !errors.Is(err, unix.EEXIST) {
@@ -637,10 +623,8 @@ func mkdirRandomAt(parentFD int, prefix string) (string, error) {
 	return "", errors.New("exhausted private transaction names")
 }
 
-func randomName(prefix string) (string, error) {
-	value := make([]byte, 12)
-	_, err := rand.Read(value)
-	return prefix + strconv.Itoa(os.Getpid()) + "-" + hex.EncodeToString(value), err
+func randomName(prefix string) string {
+	return prefix + strconv.Itoa(os.Getpid()) + "-" + uuid.NewV4().String()
 }
 
 func validatePrefix(prefix string) error {
@@ -678,6 +662,7 @@ func readFD(fd, limit int) ([]byte, error) {
 }
 
 func writeJSONAt(parentFD int, name string, value any) error {
+	// Keep the v1 disk representation, including null slices and omitempty.
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -697,19 +682,25 @@ func writeJSONAt(parentFD int, name string, value any) error {
 	return unix.Fsync(fd)
 }
 
-func readJSONAt(parentFD int, name string, value any) error {
-	fd, err := unix.Openat(parentFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+func (d *Directory) readJSON[T transactionMarker | transactionJournal](name string) (T, error) {
+	var value T
+	fd, err := unix.Openat(d.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
-		return err
+		return value, err
 	}
 	identity, inspectErr := identityFromFD(fd)
 	data, readErr := readFD(fd, 4<<20)
 	_ = unix.Close(fd)
 	if inspectErr != nil || readErr != nil || identity.Kind != KindRegular || identity.Links != 1 ||
 		identity.UID != effectiveUID() || identity.Mode&0o777 != 0o600 {
-		return errors.New("journal leaf is not a private owned regular file")
+		return value, errors.New("journal leaf is not a private owned regular file")
 	}
-	return json.Unmarshal(data, value)
+	// Transaction metadata must not silently accept duplicate keys or invalid UTF-8.
+	if err := jsonv2.Unmarshal(data, &value); err != nil {
+		var zero T
+		return zero, err
+	}
+	return value, nil
 }
 
 func effectiveUID() uint32 {

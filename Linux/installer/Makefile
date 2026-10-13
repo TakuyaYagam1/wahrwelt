@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 # Pinned tool versions.
-GOLANGCI_LINT_VERSION ?= v2.11.4
+GOLANGCI_LINT_VERSION ?= v2.14.0
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 NIXOS_DIR := $(abspath ../NixOS)
@@ -212,19 +212,19 @@ nix-hm-eval: ## Eval runtime shell module and all-on Home Manager imports, inclu
 
 .PHONY: nix-end4-hypr-build
 nix-end4-hypr-build: ## Realize and inspect the validated Home Manager End4 Hypr artifact
-	@artifact="$$(WAHRWELT_NIXOS_DIR='$(NIXOS_DIR)' nix build $(NIX_CACHE_ARGS) --no-link --no-write-lock-file --impure --print-out-paths --expr '$(END4_HYPR_EXPR)')"; \
+	@artifact="$$(WAHRWELT_NIXOS_DIR='$(NIXOS_DIR)' nix build $(NIX_CACHE_ARGS) --no-link --no-write-lock-file --impure --print-out-paths --expr '$(END4_HYPR_EXPR)')" || exit $$?; \
 	printf 'End4 Hypr artifact: %s\n' "$$artifact"; \
 	cd $(REPO_ROOT) && bash Linux/dots/hypr/scripts/tests/end4-artifact-test.sh "$$artifact"
 
 .PHONY: nix-end4-pc-quickshell-build
 nix-end4-pc-quickshell-build: ## Realize and inspect the managed End4 pC QuickShell artifact
-	@artifact="$$(WAHRWELT_NIXOS_DIR='$(NIXOS_DIR)' nix build $(NIX_CACHE_ARGS) --no-link --no-write-lock-file --impure --print-out-paths --expr '$(END4_PC_QUICKSHELL_EXPR)')"; \
+	@artifact="$$(WAHRWELT_NIXOS_DIR='$(NIXOS_DIR)' nix build $(NIX_CACHE_ARGS) --no-link --no-write-lock-file --impure --print-out-paths --expr '$(END4_PC_QUICKSHELL_EXPR)')" || exit $$?; \
 	printf 'End4 pC QuickShell artifact: %s\n' "$$artifact"; \
 	cd $(REPO_ROOT) && bash Linux/dots/hypr/scripts/tests/end4-artifact-test.sh --quickshell "$$artifact"
 
 .PHONY: nix-shell-transition-build
 nix-shell-transition-build: ## Realize and inspect the managed QuickShell transition artifact
-	@artifact="$$(WAHRWELT_NIXOS_DIR='$(NIXOS_DIR)' nix build $(NIX_CACHE_ARGS) --no-link --no-write-lock-file --impure --print-out-paths --expr '$(SHELL_TRANSITION_EXPR)')"; \
+	@artifact="$$(WAHRWELT_NIXOS_DIR='$(NIXOS_DIR)' nix build $(NIX_CACHE_ARGS) --no-link --no-write-lock-file --impure --print-out-paths --expr '$(SHELL_TRANSITION_EXPR)')" || exit $$?; \
 	printf 'QuickShell transition artifact: %s\n' "$$artifact"; \
 	cd $(REPO_ROOT) && $(NODE) Linux/dots/hypr/scripts/tests/shell-transition-artifact-test.mjs "$$artifact"
 

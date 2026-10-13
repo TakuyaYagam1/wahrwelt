@@ -62,6 +62,23 @@ func TestLintingUsesNixToolchainWithoutApt(t *testing.T) {
 	}
 }
 
+func TestInstallerUsesLatestGoInNixAndModuleVersionInCI(t *testing.T) {
+	packages, err := os.ReadFile("../../../NixOS/lib/flake-packages.nix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(packages), "wahrwelt = flakePkgs.buildGoLatestModule {") {
+		t.Fatal("installer Nix build must use go_latest, not nixpkgs' older default Go")
+	}
+	workflow, err := os.ReadFile("../../../../.github/workflows/linting.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(workflow), "go-version-file: Linux/installer/go.mod") {
+		t.Fatal("installer CI must derive its Go version from go.mod")
+	}
+}
+
 func TestLintingBuildsVersionedV1ToV2MigrationUnit(t *testing.T) {
 	workflow, err := os.ReadFile("../../../../.github/workflows/linting.yml")
 	if err != nil {

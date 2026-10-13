@@ -70,6 +70,5 @@ func openNoFollow(path string) (*os.File, error) {
 		}
 		return nil, err
 	}
-	//nolint:gosec // syscall.Open returns a valid non-negative file descriptor here; os.NewFile requires uintptr.
 	return os.NewFile(uintptr(fd), path), nil
 }

@@ -4,10 +4,14 @@ package fsowner
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"uuid"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestTransactionCommitRemovesPrivateStagesAndJournal(t *testing.T) {
@@ -286,5 +290,142 @@ func TestBeginRejectsSymlinkTransactionRoot(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("symlink root gained entries: %v", entries)
+	}
+}
+
+func TestTransactionRejectsAmbiguousJSON(t *testing.T) {
+	t.Parallel()
+
+	for _, leaf := range []string{markerName, journalName} {
+		for _, corruption := range []struct {
+			name string
+			edit func(string) string
+		}{
+			{"duplicate version", func(data string) string { return `{"version":2,` + data[1:] }},
+			{"invalid UTF-8", func(data string) string { return data[:len(data)-1] + ",\"extra\":\"\xff\"}" }},
+		} {
+			t.Run(leaf+"/"+corruption.name, func(t *testing.T) {
+				t.Parallel()
+				txPath, err := Begin(privateTempDir(t), ".runtime-rollback-", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(txPath, leaf)
+				mustWritePrivate(t, path, corruption.edit(mustRead(t, path)), 0o600)
+				if err := Commit(txPath); err == nil {
+					t.Fatal("Commit() accepted ambiguous JSON and removed the journal")
+				}
+				if _, err := os.Lstat(path); err != nil {
+					t.Fatalf("invalid journal was not preserved: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestTransactionReadsLegacyEmptyJournal(t *testing.T) {
+	t.Parallel()
+
+	txPath, err := Begin(privateTempDir(t), ".runtime-rollback-", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Existing v1 journals use null for nil entries, not the v2 default [].
+	const legacyJournal = `{"version":1,"phase":"active","entries":null}`
+	path := filepath.Join(txPath, journalName)
+	if got := mustRead(t, path); got != legacyJournal {
+		t.Fatalf("empty journal = %s, want historical representation %s", got, legacyJournal)
+	}
+	// Transactions created before the UUID migration must remain recoverable.
+	legacyPath := filepath.Join(filepath.Dir(txPath), ".runtime-rollback-123-000011112222333344445555")
+	if err := os.Rename(txPath, legacyPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := Commit(legacyPath); err != nil {
+		t.Fatalf("Commit() of legacy v1 journal: %v", err)
+	}
+}
+
+func TestTransactionRejectsUnsafeJSONLeaves(t *testing.T) {
+	t.Parallel()
+
+	for _, leaf := range []string{markerName, journalName} {
+		for _, unsafeLeaf := range []struct {
+			name  string
+			setup func(*testing.T, string)
+		}{
+			{"public mode", func(t *testing.T, path string) {
+				if err := os.Chmod(path, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}},
+			{"hardlink", func(t *testing.T, path string) {
+				if err := os.Link(path, filepath.Join(t.TempDir(), "linked")); err != nil {
+					t.Fatal(err)
+				}
+			}},
+			{"symlink", func(t *testing.T, path string) {
+				original := filepath.Join(t.TempDir(), "original")
+				if err := os.Rename(path, original); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(original, path); err != nil {
+					t.Fatal(err)
+				}
+			}},
+			{"too large", func(t *testing.T, path string) {
+				mustWritePrivate(t, path, mustRead(t, path)+strings.Repeat(" ", 4<<20), 0o600)
+			}},
+			{"fifo", func(t *testing.T, path string) {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				if err := unix.Mkfifo(path, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}},
+		} {
+			t.Run(leaf+"/"+unsafeLeaf.name, func(t *testing.T) {
+				t.Parallel()
+				txPath, err := Begin(privateTempDir(t), ".runtime-rollback-", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(txPath, leaf)
+				unsafeLeaf.setup(t, path)
+				if err := Commit(txPath); err == nil {
+					t.Fatal("Commit() accepted unsafe JSON leaf")
+				}
+				if _, err := os.Lstat(path); err != nil {
+					t.Fatalf("unsafe leaf was not preserved: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestRandomNameUsesUniqueUUIDv4Suffix(t *testing.T) {
+	t.Parallel()
+
+	const prefix = ".runtime-rollback-"
+	wantPrefix := fmt.Sprintf("%s%d-", prefix, os.Getpid())
+	seen := make(map[string]bool)
+	for range 100 {
+		name := randomName(prefix)
+		suffix, ok := strings.CutPrefix(name, wantPrefix)
+		if !ok {
+			t.Fatalf("transaction name %q lost prefix and pid", name)
+		}
+		id, err := uuid.Parse(suffix)
+		if err != nil {
+			t.Fatalf("transaction name %q has invalid UUID suffix: %v", name, err)
+		}
+		if id[6]>>4 != 4 || id[8]>>6 != 2 {
+			t.Fatalf("transaction name %q does not use a random RFC 9562 v4 UUID", name)
+		}
+		if seen[name] {
+			t.Fatalf("duplicate transaction name %q", name)
+		}
+		seen[name] = true
 	}
 }

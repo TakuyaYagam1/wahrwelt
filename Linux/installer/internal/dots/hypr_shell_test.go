@@ -906,10 +906,27 @@ func prepareActiveHomeManagerTopLevelEntrypoint(t *testing.T, home, hyprDir stri
 	return topLevel, target, payload
 }
 
+func TestHomeManagerFixtureIgnoresNixStderrWarnings(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	const want = "/nix/store/00000000000000000000000000000000-home-manager-files"
+	script := "#!" + sh + "\nprintf '%s\\n' 'warning: SQLite database is busy' >&2\nprintf '%s\\n' '" + want + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "nix"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	if got := addHomeManagerFilesNixStorePath(t, t.TempDir()); got != want {
+		t.Fatalf("store path = %q, want %q", got, want)
+	}
+}
+
 func addHomeManagerFilesNixStorePath(t *testing.T, source string) string {
 	t.Helper()
 	const name = "home-manager-files"
-	output, err := exec.Command(
+	command := exec.Command(
 		"nix",
 		"--extra-experimental-features",
 		"nix-command",
@@ -918,9 +935,12 @@ func addHomeManagerFilesNixStorePath(t *testing.T, source string) string {
 		"--name",
 		name,
 		source,
-	).CombinedOutput()
+	)
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if err != nil {
-		t.Fatalf("add runtime fixture to the Nix store: %v\n%s", err, output)
+		t.Fatalf("add runtime fixture to the Nix store: %v\n%s\n%s", err, output, stderr.String())
 	}
 	storePath := strings.TrimSpace(string(output))
 	if !strings.HasPrefix(storePath, "/nix/store/") || !strings.HasSuffix(storePath, "-"+name) {

@@ -12,6 +12,28 @@ fail() {
   exit 1
 }
 
+assert_failed_build_stops_before_verification() {
+  local fakebin="$test_root/failed-build-bin"
+  local target output
+
+  mkdir -p "$fakebin"
+  printf '#!%s\nprintf "simulated Nix build failure\\n" >&2\nexit 42\n' "$(command -v bash)" >"$fakebin/nix"
+  chmod 0755 "$fakebin/nix"
+
+  for target in nix-end4-hypr-build nix-end4-pc-quickshell-build nix-shell-transition-build; do
+    if output="$(PATH="$fakebin:$PATH" make --no-print-directory -s -C "$repo_root/Linux/installer" "$target" 2>&1)"; then
+      fail "$target ignored a failed Nix build"
+    fi
+    case "$output" in
+      *"artifact:"* | *"usage:"*) fail "$target continued to verification after a failed build: $output" ;;
+    esac
+    case "$output" in
+      *"Error 42"*) ;;
+      *) fail "$target lost the Nix build exit status: $output" ;;
+    esac
+  done
+}
+
 make_fixture() {
   local name="$1"
   local payload="$2"
@@ -344,6 +366,7 @@ assert_video_backend_fixture video-backend-legacy 0 ''
 assert_video_ai_fixture native-video accept
 assert_video_ai_fixture patched-video accept
 assert_video_ai_fixture image-only reject
+assert_failed_build_stops_before_verification
 
 # shellcheck disable=SC2016
 assert_switchwall_command_pair legacy-video-commands accept \

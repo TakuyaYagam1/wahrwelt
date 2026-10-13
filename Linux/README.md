@@ -687,6 +687,12 @@ and it avoids host-local side effects such as password hashing or writing
 nix run "path:$PWD?dir=Linux/NixOS#wahrwelt" -- apply --dry-run --no-switch
 ```
 
+Building the installer from source requires Go 1.27.2 or newer. CI reads the
+version from `Linux/installer/go.mod`; the Nix package uses `buildGoLatestModule`
+so it does not fall back to nixpkgs' older default Go. No `GOEXPERIMENT` flags
+are required. After updating Go dependencies, update the installer's
+`vendorHash` in `NixOS/lib/flake-packages.nix` and verify the Nix build too.
+
 Useful checks after changing installer or shell integration:
 
 | Make target | Run it when |
