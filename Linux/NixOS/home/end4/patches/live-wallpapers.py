@@ -297,12 +297,9 @@ def install_runtime_helpers(root: Path) -> None:
 
 
 def patch_gemini_categorizer(root: Path) -> None:
-    relative = (
-        "ii/scripts/ai/gemini-categorize-wallpaper.sh"
-        if (root / "ii").is_dir()
-        else "scripts/ai/gemini-categorize-wallpaper.sh"
-    )
-    path = root / relative
+    if not (root / "ii").is_dir():
+        return
+    path = root / "ii/scripts/ai/gemini-categorize-wallpaper.sh"
     text = path.read_text()
     old = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
 

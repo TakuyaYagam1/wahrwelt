@@ -198,6 +198,56 @@ assert_video_backend_fixture() {
   esac
 }
 
+assert_video_ai_fixture() {
+  local name="$1"
+  local expectation="$2"
+  local script="$test_root/$name.sh"
+  local function_file="$test_root/video-ai-function.sh"
+  local output
+
+  sed -n '/^run_end4_video_ai_source_simulation() {/,/^}/p' "$verifier" >"$function_file"
+  if [ ! -s "$function_file" ]; then
+    fail "could not load video categorizer simulation"
+  fi
+  printf '#!%s\n' "$(command -v bash)" >"$script"
+  case "$name" in
+    native-video)
+      cat >>"$script" <<'EOF'
+ffmpeg -i "$1" -frames:v 1 "$XDG_RUNTIME_DIR/resized.jpg"
+base64 -w0 "$XDG_RUNTIME_DIR/resized.jpg" >/dev/null
+printf 'anime\n'
+EOF
+      ;;
+    patched-video)
+      cat >>"$script" <<'EOF'
+ffmpeg -i "$1" -frames:v 1 "$XDG_RUNTIME_DIR/frame.jpg"
+magick "$XDG_RUNTIME_DIR/frame.jpg" -resize 200x "$XDG_RUNTIME_DIR/resized.jpg"
+base64 -w0 "$XDG_RUNTIME_DIR/resized.jpg" >/dev/null
+printf 'anime\n'
+EOF
+      ;;
+    image-only)
+      cat >>"$script" <<'EOF'
+magick "$1" -resize 200x "$XDG_RUNTIME_DIR/resized.jpg"
+base64 -w0 "$XDG_RUNTIME_DIR/resized.jpg" >/dev/null
+printf 'anime\n'
+EOF
+      ;;
+  esac
+  chmod 0755 "$script"
+
+  if output="$(bash -e -c 'source "$1"; run_end4_video_ai_source_simulation "$2"' \
+    end4-ai-test "$function_file" "$script" 2>&1)"; then
+    [ "$expectation" = accept ] || fail "$name image-only fixture unexpectedly passed"
+  else
+    [ "$expectation" = reject ] || fail "$name video fixture failed: $output"
+    case "$output" in
+      *"decoded a video as an image"*) ;;
+      *) fail "$name failed for the wrong reason: $output" ;;
+    esac
+  fi
+}
+
 # shellcheck disable=SC2016
 assert_rejected current-restart \
   'hl.bind("CTRL + SUPER + R", hl.dsp.exec_cmd("killall ydotool qs quickshell; qs -c $qsConfig &"))'
@@ -291,6 +341,9 @@ esac
 
 assert_video_backend_fixture video-backend-with-helper 1 '-p -a max'
 assert_video_backend_fixture video-backend-legacy 0 ''
+assert_video_ai_fixture native-video accept
+assert_video_ai_fixture patched-video accept
+assert_video_ai_fixture image-only reject
 
 # shellcheck disable=SC2016
 assert_switchwall_command_pair legacy-video-commands accept \

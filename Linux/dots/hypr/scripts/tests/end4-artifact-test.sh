@@ -620,7 +620,7 @@ run_end4_media_sort_simulation() {
 
 run_end4_video_ai_source_simulation() {
   local categorizer="$1"
-  local fixture fakebin trace source output frame magick_input
+  local fixture fakebin trace source output frame magick_input magick_output encoded_input expected_input
   fixture="$(mktemp -d)"
   fakebin="$fixture/bin"
   trace="$fixture/trace"
@@ -638,7 +638,8 @@ EOF
   printf '#!%s\n' "$(command -v bash)" >"$fakebin/magick"
   cat >>"$fakebin/magick" <<'EOF'
 set -euo pipefail
-printf 'magick-input=%s\n' "$1" >>"$END4_TEST_TRACE"
+printf 'magick-input=%s\nmagick-output=%s\n' "$1" "${!#}" >>"$END4_TEST_TRACE"
+printf 'resized' >"${!#}"
 EOF
   printf '#!%s\n' "$(command -v bash)" >"$fakebin/secret-tool"
   cat >>"$fakebin/secret-tool" <<'EOF'
@@ -649,6 +650,8 @@ EOF
 if [ "${1:-}" = "--version" ]; then
   printf '%s\n' 'base64 (GNU coreutils)'
 else
+  printf 'base64-input=%s\n' "${!#}" >>"$END4_TEST_TRACE"
+  test -f "${!#}"
   printf '%s' 'ZnJhbWU='
 fi
 EOF
@@ -663,8 +666,12 @@ EOF
     "$categorizer" "$source")"
   frame="$(sed -n 's/^ffmpeg-output=//p' "$trace")"
   magick_input="$(sed -n 's/^magick-input=//p' "$trace")"
-  if [ "$output" != anime ] || [ -z "$frame" ] || [ "$magick_input" != "$frame" ] ||
-    [ "$magick_input" = "$source" ]; then
+  magick_output="$(sed -n 's/^magick-output=//p' "$trace")"
+  encoded_input="$(sed -n 's/^base64-input=//p' "$trace")"
+  expected_input="${magick_output:-$frame}"
+  if [ "$output" != anime ] || [ -z "$frame" ] || [ "$frame" = "$source" ] ||
+    [ "$encoded_input" != "$expected_input" ] ||
+    { [ -n "$magick_input" ] && [ "$magick_input" != "$frame" ]; }; then
     rm -rf -- "$fixture"
     printf 'FAIL: End4 AI categorizer decoded a video as an image: %s\n' "$categorizer" >&2
     exit 1

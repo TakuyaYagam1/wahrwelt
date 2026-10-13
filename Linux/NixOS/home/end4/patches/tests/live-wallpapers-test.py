@@ -131,6 +131,55 @@ class WallpaperServiceDriftTest(unittest.TestCase):
             self.assertEqual(path.read_text(), original)
 
 
+class GeminiCategorizerTest(unittest.TestCase):
+    OLD_RESIZE = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
+
+# Resize image for speed
+mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
+magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
+'''
+    PC_VIDEO_RESIZE = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
+
+# Resize image for speed
+mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
+case "${SOURCE_IMG_PATH,,}" in
+    *.mp4|*.webm|*.mkv|*.avi|*.mov)
+        ffmpeg -y -loglevel error -i "$SOURCE_IMG_PATH" -frames:v 1 -vf scale=200:-2 -q:v 10 "$RESIZED_IMG_PATH"
+        ;;
+    *)
+        magick "$SOURCE_IMG_PATH[0]" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
+        ;;
+esac
+'''
+
+    def test_pc_categorizer_is_left_to_upstream(self) -> None:
+        for source in (self.OLD_RESIZE, self.PC_VIDEO_RESIZE):
+            with self.subTest(native_video=source == self.PC_VIDEO_RESIZE):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    path = root / "scripts/ai/gemini-categorize-wallpaper.sh"
+                    path.parent.mkdir(parents=True)
+                    path.write_text(source)
+
+                    LIVE_WALLPAPERS.patch_gemini_categorizer(root)
+
+                    self.assertEqual(path.read_text(), source)
+
+    def test_official_categorizer_still_handles_video(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "ii/scripts/ai/gemini-categorize-wallpaper.sh"
+            path.parent.mkdir(parents=True)
+            path.write_text(self.OLD_RESIZE)
+
+            LIVE_WALLPAPERS.patch_gemini_categorizer(root)
+
+            patched = path.read_text()
+            self.assertIn('ffmpeg -nostdin -loglevel error', patched)
+            self.assertIn('trap cleanup EXIT', patched)
+            self.assertNotIn(self.OLD_RESIZE, patched)
+
+
 class SwitchwallPatchTest(unittest.TestCase):
     def make_restore(self, source: str, video_path: str) -> tuple[list[str], str]:
         patch_switchwall = getattr(LIVE_WALLPAPERS, "patch_switchwall", None)
