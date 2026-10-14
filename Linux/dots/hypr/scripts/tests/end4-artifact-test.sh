@@ -28,15 +28,21 @@ fi
 switchwall_has_supported_video_commands() {
   local switchwall="$1"
   local normalized_source
-  local video_command_count flag_reference_line_count
+  local video_command_count flag_reference_line_count socket_reference_line_count
+  local socket_dir_declaration_count socket_prefix_declaration_count socket_cleanup_count
+  local legacy_restore legacy_runtime flagged_restore flagged_runtime ipc_restore ipc_runtime
   # shellcheck disable=SC2016
-  local legacy_restore='mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &'
+  legacy_restore='mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &'
   # shellcheck disable=SC2016
-  local legacy_runtime='mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
+  legacy_runtime='mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
   # shellcheck disable=SC2016
-  local flagged_restore='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &'
+  flagged_restore='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &'
   # shellcheck disable=SC2016
-  local flagged_runtime='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
+  flagged_runtime='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
+  # shellcheck disable=SC2016
+  ipc_restore='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\$monitor.sock" "\$monitor" $escaped_video_path &'
+  # shellcheck disable=SC2016
+  ipc_runtime='mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &'
 
   normalized_source="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^mpvpaper[[:space:]]/s/[[:blank:]]+/ /g' "$switchwall")" || return 1
   video_command_count="$(grep -cE '^mpvpaper[[:space:]]' <<<"$normalized_source" || true)"
@@ -45,7 +51,8 @@ switchwall_has_supported_video_commands() {
   flag_reference_line_count="$(grep -cF 'MPVPAPER_FLAGS' <<<"$normalized_source" || true)"
   if [ "$flag_reference_line_count" -eq 0 ]; then
     if grep -Fxq -- "$legacy_restore" <<<"$normalized_source" &&
-      grep -Fxq -- "$legacy_runtime" <<<"$normalized_source"; then
+      grep -Fxq -- "$legacy_runtime" <<<"$normalized_source" &&
+      ! grep -qF 'MPV_SOCKET_' <<<"$normalized_source"; then
       return 0
     fi
     return 1
@@ -53,10 +60,28 @@ switchwall_has_supported_video_commands() {
 
   if [ "$flag_reference_line_count" -eq 3 ] &&
     { grep -Fxq -- 'MPVPAPER_FLAGS="-p -a max"' <<<"$normalized_source" ||
-      grep -Fxq -- "MPVPAPER_FLAGS='-p -a max'" <<<"$normalized_source"; } &&
-    grep -Fxq -- "$flagged_restore" <<<"$normalized_source" &&
-    grep -Fxq -- "$flagged_runtime" <<<"$normalized_source"; then
-    return 0
+      grep -Fxq -- "MPVPAPER_FLAGS='-p -a max'" <<<"$normalized_source"; }; then
+    if grep -Fxq -- "$flagged_restore" <<<"$normalized_source" &&
+      grep -Fxq -- "$flagged_runtime" <<<"$normalized_source" &&
+      ! grep -qF 'MPV_SOCKET_' <<<"$normalized_source"; then
+      return 0
+    fi
+
+    # shellcheck disable=SC2016
+    socket_dir_declaration_count="$(grep -Fxc -- 'MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"' <<<"$normalized_source" || true)"
+    # shellcheck disable=SC2016
+    socket_prefix_declaration_count="$(grep -Fxc -- 'MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"' <<<"$normalized_source" || true)"
+    # shellcheck disable=SC2016
+    socket_cleanup_count="$(grep -Fxc -- 'rm -f "$MPV_SOCKET_PREFIX"*.sock' <<<"$normalized_source" || true)"
+    socket_reference_line_count="$(grep -cF 'MPV_SOCKET_' <<<"$normalized_source" || true)"
+    if [ "$socket_dir_declaration_count" -eq 1 ] &&
+      [ "$socket_prefix_declaration_count" -eq 1 ] &&
+      [ "$socket_cleanup_count" -eq 2 ] &&
+      [ "$socket_reference_line_count" -eq 6 ] &&
+      grep -Fxq -- "$ipc_restore" <<<"$normalized_source" &&
+      grep -Fxq -- "$ipc_runtime" <<<"$normalized_source"; then
+      return 0
+    fi
   fi
 
   return 1
@@ -749,7 +774,7 @@ run_end4_video_backend_simulation() {
     "$fakebin/systemd-run" "$fakebin/systemctl" "$fakebin/setsid" "$generated_switchwall"
   sed -i 's/^main "\$@"/# main "\$@"/' "$generated_switchwall"
   # shellcheck disable=SC2016
-  XDG_CONFIG_HOME="$config_home" HOME="$fixture/home" "$BASH" -e -c \
+  XDG_CONFIG_HOME="$config_home" XDG_RUNTIME_DIR="$runtime_dir" HOME="$fixture/home" "$BASH" -e -c \
     'source "$1"; create_restore_script "$2"' \
     end4-generated-restore "$generated_switchwall" "$dangerous_video"
   if [ "$(head -n1 "$restore_script")" != "#!${BASH}" ] || [ -e "$marker" ]; then
@@ -762,6 +787,10 @@ run_end4_video_backend_simulation() {
   mapfile -t mpvpaper_args < <(sed -n 's/^mpvpaper-arg://p' "$log")
   mpvpaper_arg_count="${#mpvpaper_args[@]}"
   expected_video_opts='no-audio loop hwdec=auto scale=bilinear interpolation=no video-sync=display-resample panscan=1.0 video-scale-x=1.0 video-scale-y=1.0 video-align-x=0.5 video-align-y=0.5 load-scripts=no'
+  # shellcheck disable=SC2016
+  if grep -Fq 'MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"' "$switchwall"; then
+    expected_video_opts="$expected_video_opts input-ipc-server=$runtime_dir/mpvpaper-eDP-1.sock"
+  fi
   if [ "$mpvpaper_arg_count" -eq 7 ]; then
     if [ "${mpvpaper_args[0]}" != '-p' ] ||
       [ "${mpvpaper_args[1]}" != '-a' ] ||

@@ -396,4 +396,59 @@ assert_switchwall_command_pair comment-only-video-commands reject \
   '# mpvpaper -o "$VIDEO_OPTS" "\$monitor" $escaped_video_path &' \
   '# mpvpaper -o "$VIDEO_OPTS" "$monitor" "$video_path" &'
 
+# shellcheck disable=SC2016
+ipc_support_lines='MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+MPVPAPER_FLAGS="-p -a max"'
+# shellcheck disable=SC2016
+ipc_missing_cleanup_lines='MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+MPVPAPER_FLAGS="-p -a max"'
+# shellcheck disable=SC2016
+ipc_commented_socket_dir_lines='# MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+MPVPAPER_FLAGS="-p -a max"'
+# shellcheck disable=SC2016
+ipc_unsupported_prefix_lines='MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/unsupported-"
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+rm -f "$MPV_SOCKET_PREFIX"*.sock
+MPVPAPER_FLAGS="-p -a max"'
+
+# shellcheck disable=SC2016
+assert_switchwall_command_pair ipc-video-commands accept \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\$monitor.sock" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &' \
+  "$ipc_support_lines"
+# shellcheck disable=SC2016
+assert_switchwall_command_pair mixed-ipc-video-commands reject \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\$monitor.sock" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &' \
+  "$ipc_support_lines"
+# shellcheck disable=SC2016
+assert_switchwall_command_pair bad-ipc-restore-escaping reject \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &' \
+  "$ipc_support_lines"
+# shellcheck disable=SC2016
+assert_switchwall_command_pair missing-ipc-cleanup reject \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\$monitor.sock" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &' \
+  "$ipc_missing_cleanup_lines"
+# shellcheck disable=SC2016
+assert_switchwall_command_pair commented-ipc-socket-dir reject \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\$monitor.sock" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &' \
+  "$ipc_commented_socket_dir_lines"
+# shellcheck disable=SC2016
+assert_switchwall_command_pair unsupported-ipc-socket-prefix reject \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\$monitor.sock" "\$monitor" $escaped_video_path &' \
+  'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &' \
+  "$ipc_unsupported_prefix_lines"
+
 printf 'OK End4 artifact lifecycle verifier fixtures\n'

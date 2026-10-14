@@ -85,9 +85,20 @@ def transform_switchwall(text: str, label: str) -> str:
         fail(f"{label}: restore script heredoc terminator is missing or ambiguous")
     heredoc = create_body[heredoc_matches[0].end() : heredoc_ends[0].start()]
 
+    socket_dir_line = 'MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"'
+    socket_prefix_line = 'MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"'
+    socket_dir_lines = re.findall(r"(?m)^[ \t]*MPV_SOCKET_DIR\b[^\r\n]*$", text)
+    socket_prefix_lines = re.findall(r"(?m)^[ \t]*MPV_SOCKET_PREFIX\b[^\r\n]*$", text)
+    socket_cleanup_pattern = re.compile(
+        r'(?m)^[ \t]*rm[ \t]+-f[ \t]+"\$MPV_SOCKET_PREFIX"\*\.sock[ \t]*$'
+    )
+    socket_cleanup_matches = list(socket_cleanup_pattern.finditer(text))
+
     call_pattern = re.compile(
         r'(?m)^(?P<indent>[ \t]*)mpvpaper[ \t]+'
-        r'(?P<flags>\$MPVPAPER_FLAGS[ \t]+)?-o[ \t]+"\$VIDEO_OPTS"'
+        r'(?P<flags>\$MPVPAPER_FLAGS[ \t]+)?-o[ \t]+'
+        r'(?P<video_opts>"\$VIDEO_OPTS'
+        r'(?P<ipc> input-ipc-server=\$MPV_SOCKET_PREFIX(?P<socket_monitor_escape>\\?)\$monitor\.sock)?")'
         r'[ \t]+"(?P<monitor>\\?\$monitor)"[ \t]+"\$video_path"'
         r'[ \t]*&[ \t]*(?:\#[^\r\n]*)?[ \t]*$'
     )
@@ -107,6 +118,37 @@ def transform_switchwall(text: str, label: str) -> str:
     runtime_match = call_pattern.fullmatch(runtime_call)
     if runtime_match is None or runtime_match.group("monitor") != "$monitor":
         fail(f"{label}: runtime playback command is missing or unsupported")
+
+    restore_has_ipc = restore_calls[0].group("ipc") is not None
+    runtime_has_ipc = runtime_match.group("ipc") is not None
+    if restore_has_ipc != runtime_has_ipc:
+        fail(f"{label}: restore and runtime IPC playback commands do not match")
+    if restore_has_ipc:
+        if not has_flags:
+            fail(f"{label}: IPC playback requires the reviewed MPVPAPER_FLAGS")
+        if (
+            restore_calls[0].group("socket_monitor_escape") != "\\"
+            or runtime_match.group("socket_monitor_escape") != ""
+        ):
+            fail(f"{label}: restore and runtime IPC monitor escaping is unsupported")
+        if (
+            len(socket_dir_lines) != 1
+            or socket_dir_lines[0].strip() != socket_dir_line
+            or len(socket_prefix_lines) != 1
+            or socket_prefix_lines[0].strip() != socket_prefix_line
+        ):
+            fail(f"{label}: IPC socket directory declarations are missing or unsupported")
+        restore_cleanup_matches = list(socket_cleanup_pattern.finditer(heredoc))
+        outside_create_cleanups = [
+            match
+            for match in socket_cleanup_matches
+            if not (create_start <= match.start() < create_end)
+        ]
+        if len(socket_cleanup_matches) != 2 or len(restore_cleanup_matches) != 1 or len(outside_create_cleanups) != 1:
+            fail(f"{label}: IPC socket cleanup is missing or ambiguous")
+    elif socket_dir_lines or socket_prefix_lines or socket_cleanup_matches:
+        fail(f"{label}: IPC socket configuration is present without IPC playback commands")
+
     if bool(runtime_match.group("flags")) != has_flags:
         fail(f"{label}: runtime MPVPAPER_FLAGS use does not match its declaration")
     if bool(restore_calls[0].group("flags")) != has_flags:
@@ -134,8 +176,9 @@ def transform_switchwall(text: str, label: str) -> str:
         fail(f"{label}: restore playback command changed during transformation")
     restore_indent = restore_calls[0].group("indent")
     flags = "$MPVPAPER_FLAGS " if has_flags else ""
+    video_opts = restore_calls[0].group("video_opts")
     restore_replacement = (
-        f'{restore_indent}mpvpaper {flags}-o "$VIDEO_OPTS" "\\$monitor" '
+        f"{restore_indent}mpvpaper {flags}-o {video_opts} \"\\$monitor\" "
         "$escaped_video_path &"
     )
     create_body = (

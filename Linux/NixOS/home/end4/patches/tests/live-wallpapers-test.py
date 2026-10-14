@@ -67,6 +67,47 @@ def switchwall_source(with_flags: bool) -> str:
     )
 
 
+def switchwall_source_with_ipc() -> str:
+    return textwrap.dedent(
+        '''\
+        CUSTOM_DIR="$XDG_CONFIG_HOME/hypr/custom"
+        RESTORE_SCRIPT_DIR="$CUSTOM_DIR/scripts"
+        RESTORE_SCRIPT="$RESTORE_SCRIPT_DIR/__restore_video_wallpaper.sh"
+        VIDEO_OPTS="no-audio loop hwdec=auto"
+        MPV_SOCKET_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+        MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"
+        MPVPAPER_FLAGS="-p -a max"
+        create_restore_script() {
+            local video_path=$1
+            cat > "$RESTORE_SCRIPT.tmp" << EOF
+        #!/bin/bash
+        rm -f "$MPV_SOCKET_PREFIX"*.sock
+        for monitor in \\$(hyprctl monitors -j | jq -r '.[] | .name'); do
+            mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock" "\\$monitor" "$video_path" &
+            sleep 0.1
+        done
+        EOF
+            mv "$RESTORE_SCRIPT.tmp" "$RESTORE_SCRIPT"
+            chmod +x "$RESTORE_SCRIPT"
+        }
+
+        remove_restore() {
+            cat > "$RESTORE_SCRIPT.tmp" << EOF
+        #!/bin/bash
+        EOF
+            mv "$RESTORE_SCRIPT.tmp" "$RESTORE_SCRIPT"
+        }
+
+        switch_video() {
+            local video_path="$1"
+            local monitor=DP-1
+            rm -f "$MPV_SOCKET_PREFIX"*.sock
+            mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &
+        }
+        '''
+    )
+
+
 class PcSettingsPreviewTest(unittest.TestCase):
     def test_preview_patch_accepts_upstream_indentation_changes(self) -> None:
         patch_preview = getattr(LIVE_WALLPAPERS, "patch_pc_settings_preview", None)
@@ -181,7 +222,9 @@ esac
 
 
 class SwitchwallPatchTest(unittest.TestCase):
-    def make_restore(self, source: str, video_path: str) -> tuple[list[str], str]:
+    def make_restore(
+        self, source: str, video_path: str, runtime_dir: Path | None = None
+    ) -> tuple[list[str], list[str], str]:
         patch_switchwall = getattr(LIVE_WALLPAPERS, "patch_switchwall", None)
         self.assertIsNotNone(patch_switchwall, "missing switchwall transformation")
 
@@ -198,6 +241,7 @@ class SwitchwallPatchTest(unittest.TestCase):
             bin_dir = root / "bin"
             bin_dir.mkdir()
             log = root / "mpvpaper.args"
+            runtime_log = root / "mpvpaper.runtime.args"
             stubs = {
                 "pkill": "#!/bin/sh\nexit 0\n",
                 "hyprctl": "#!/bin/sh\nexit 0\n",
@@ -211,6 +255,8 @@ class SwitchwallPatchTest(unittest.TestCase):
                 stub.chmod(0o755)
             env = os.environ.copy()
             env["XDG_CONFIG_HOME"] = str(config)
+            if runtime_dir is not None:
+                env["XDG_RUNTIME_DIR"] = str(runtime_dir)
             env["PATH"] = f"{bin_dir}:{env['PATH']}"
             env["MPVPAPER_LOG"] = str(log)
             generated = subprocess.run(
@@ -253,6 +299,32 @@ class SwitchwallPatchTest(unittest.TestCase):
             self.assertEqual(playback.stderr, "")
             args = log.read_bytes().decode().rstrip("\0").split("\0")
             restore_text = restore.read_text()
+            if runtime_dir is not None:
+                socket_path = runtime_dir / "mpvpaper-DP-1.sock"
+                self.assertFalse(socket_path.exists(), "restore did not clear its IPC socket")
+                socket_path.touch()
+
+            runtime_env = env.copy()
+            runtime_env["MPVPAPER_LOG"] = str(runtime_log)
+            runtime_playback = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    'set -e; source "$1"; switch_video "$2"',
+                    "switchwall-test",
+                    str(script),
+                    video_path,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=runtime_env,
+            )
+            self.assertEqual(runtime_playback.returncode, 0, runtime_playback.stderr)
+            self.assertEqual(runtime_playback.stderr, "")
+            runtime_args = runtime_log.read_bytes().decode().rstrip("\0").split("\0")
+            if runtime_dir is not None:
+                self.assertFalse(socket_path.exists(), "runtime switch did not clear its IPC socket")
 
             cleared = subprocess.run(
                 [
@@ -272,13 +344,13 @@ class SwitchwallPatchTest(unittest.TestCase):
             self.assertTrue(clear_shebang.startswith("#!/"), clear_shebang)
             self.assertTrue(Path(clear_shebang[2:]).is_absolute(), clear_shebang)
             self.assertEqual(Path(clear_shebang[2:]).name, "bash")
-            return args, restore_text
+            return args, runtime_args, restore_text
 
     def test_old_source_quotes_paths_and_keeps_legacy_playback_args(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "unexpected"
             video_path = f"wallpaper 'quoted' $(touch {marker}).mp4"
-            args, restore_text = self.make_restore(switchwall_source(False), video_path)
+            args, _, restore_text = self.make_restore(switchwall_source(False), video_path)
 
             self.assertEqual(
                 args,
@@ -289,7 +361,7 @@ class SwitchwallPatchTest(unittest.TestCase):
 
     def test_new_source_preserves_mpvpaper_flags_in_generated_playback(self) -> None:
         video_path = "/home/user/Wallpapers/slow dance.mp4"
-        args, _ = self.make_restore(switchwall_source(True), video_path)
+        args, _, _ = self.make_restore(switchwall_source(True), video_path)
 
         self.assertEqual(
             args,
@@ -301,18 +373,85 @@ class SwitchwallPatchTest(unittest.TestCase):
             "mpvpaper $MPVPAPER_FLAGS -o",
             "mpvpaper  $MPVPAPER_FLAGS   -o",
         )
-        args, _ = self.make_restore(source, "/home/user/Wallpapers/slow dance.mp4")
+        args, _, _ = self.make_restore(source, "/home/user/Wallpapers/slow dance.mp4")
 
         self.assertEqual(args[:5], ["-p", "-a", "max", "-o", "no-audio loop hwdec=auto"])
 
+    def test_current_upstream_ipc_shape_keeps_socket_and_argv_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_dir = Path(directory)
+            socket_path = runtime_dir / "mpvpaper-DP-1.sock"
+            socket_path.touch()
+            unrelated_socket = runtime_dir / "nested" / "mpvpaper-DP-1.sock"
+            unrelated_socket.parent.mkdir()
+            unrelated_socket.touch()
+            marker = runtime_dir / "unexpected"
+            video_path = f"wallpaper 'quoted' $(touch {marker}).mp4"
+
+            try:
+                restore_args, runtime_args, restore_text = self.make_restore(
+                    switchwall_source_with_ipc(), video_path, runtime_dir
+                )
+            except SystemExit as error:
+                self.fail(f"IPC playback source was rejected: {error}")
+
+            self.assertEqual(
+                restore_args,
+                [
+                    "-p",
+                    "-a",
+                    "max",
+                    "-o",
+                    f"no-audio loop hwdec=auto input-ipc-server={runtime_dir}/mpvpaper-DP-1.sock",
+                    "DP-1",
+                    video_path,
+                ],
+            )
+            self.assertEqual(runtime_args, restore_args)
+            self.assertIn(
+                f"input-ipc-server={runtime_dir}/mpvpaper-$monitor.sock", restore_text
+            )
+            self.assertFalse(socket_path.exists())
+            self.assertTrue(unrelated_socket.exists())
+            self.assertFalse(marker.exists())
+
     def test_dynamic_or_inconsistent_mpvpaper_flags_are_rejected(self) -> None:
         source = switchwall_source(True)
+        ipc_source = switchwall_source_with_ipc()
+        runtime_ipc_call = (
+            'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS '
+            'input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" '
+            '"$monitor" "$video_path" &'
+        )
         invalid_sources = (
             source.replace('MPVPAPER_FLAGS="-p -a max"', 'MPVPAPER_FLAGS="$(unsafe)"'),
             source.replace("mpvpaper $MPVPAPER_FLAGS -o", "mpvpaper -o", 1),
             source + '\nMPVPAPER_FLAGS="-p -a max"\n',
             source.replace("create_restore_script()", "create_restore_file()"),
             source + "\nmpvpaper $MPVPAPER_FLAGS -o \\\"$VIDEO_OPTS\\\" \\\"$monitor\\\" \\\"$video_path\\\" &\n",
+            ipc_source.replace(
+                runtime_ipc_call,
+                'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &',
+                1,
+            ),
+            ipc_source.replace(
+                'input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock',
+                'input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock',
+                1,
+            ),
+            ipc_source.replace(
+                'MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/mpvpaper-"',
+                'MPV_SOCKET_PREFIX="$MPV_SOCKET_DIR/unsupported-"',
+            ),
+            ipc_source.replace('rm -f "$MPV_SOCKET_PREFIX"*.sock\n', "", 1),
+            ipc_source.replace(
+                'input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock',
+                'input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock,unsupported=yes',
+                1,
+            ),
+            ipc_source.replace('MPVPAPER_FLAGS="-p -a max"\n', "").replace(
+                "$MPVPAPER_FLAGS ", ""
+            ),
         )
         for invalid in invalid_sources:
             with self.subTest(source=invalid[:80]):
