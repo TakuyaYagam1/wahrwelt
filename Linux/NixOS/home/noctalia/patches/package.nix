@@ -76,13 +76,19 @@ let
     ];
     buildPhase = ''
       runHook preBuild
-      ninja noctalia lockscreen_video_player_test
+      ninja -j"$NIX_BUILD_CORES" noctalia lockscreen_video_player_test \
+        wallpaper_media_test live_wallpaper_controller_test wallpaper_scan_symlink_test \
+        wallpaper_integration_test
       runHook postBuild
     '';
     doCheck = true;
     checkPhase = ''
       runHook preCheck
       ./lockscreen_video_player_test
+      ./wallpaper_media_test
+      ./live_wallpaper_controller_test
+      ./wallpaper_scan_symlink_test
+      ./wallpaper_integration_test
       runHook postCheck
     '';
     prePatch = (old.prePatch or "") + ''
@@ -100,7 +106,7 @@ let
       check_marker meson.build "'src/shell/wallpaper/wallpaper.cpp'" 1
       check_marker src/shell/wallpaper/panel/wallpaper_scanner.cpp 'DirectoryScanner::isImagePath' 2
       check_marker src/shell/wallpaper/wallpaper.cpp 'void Wallpaper::syncInstances()' 1
-      check_marker src/theme/theme_service.cpp 'auto image = loadAndResize(wallpaperPath, *scheme);' 1
+      check_marker src/theme/theme_service.cpp 'auto image = loadAndResize(path, scheme);' 1
       check_marker src/shell/lockscreen/lock_screen.cpp 'std::string LockScreen::wallpaperPathForOutput' 1
       check_marker src/shell/lockscreen/lock_screen.cpp 'const std::string& customWallpaper' 1
     '';
@@ -129,6 +135,8 @@ let
       check_marker tests/live_wallpaper_controller_test.cpp 'processes[1]->simulateExit();' 1
       check_marker tests/live_wallpaper_controller_test.cpp 'failNextLaunch = true;' 1
       check_marker src/shell/wallpaper/panel/wallpaper_panel.cpp 'MediaFilter::Live' 3
+      check_marker src/shell/wallpaper/panel/wallpaper_scanner.cpp 'cacheMedia(entry, e);' 2
+      check_marker src/theme/theme_service.cpp 'auto image = loadAndResize(paletteSource.string(), scheme);' 1
       check_marker meson.build 'src/shell/wallpaper/live_wallpaper_controller.cpp' 1
       check_marker meson.build "'lockscreen_video_player'" 1
       check_marker tests/lockscreen_video_player_test.cpp 'VideoFrameAssembler assembler(4)' 1
@@ -136,6 +144,7 @@ let
       check_marker src/shell/lockscreen/lockscreen_video_player.cpp 'crop=1280:720,format=rgba' 1
       check_marker src/shell/lockscreen/lock_surface.cpp 'm_videoFrameTimer.startRepeating' 1
       check_marker src/shell/lockscreen/lock_surface.cpp 'textures.updateSubImage' 1
+      cp ${patchRoot}/tests/v5-wallpaper-integration-test.cpp tests/wallpaper_integration_test.cpp
     '';
     postFixup = (old.postFixup or "") + ''
       wrapProgram $out/bin/noctalia --prefix PATH : ${pkgs.ffmpeg}/bin:${pkgs.mpvpaper}/bin

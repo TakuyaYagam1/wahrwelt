@@ -9,11 +9,16 @@
    'src/shell/wallpaper/wallpaper_shuffle_state.cpp',
    'src/shell/wallpaper/wallpaper.cpp',
    'src/shell/wallpaper/panel/wallpaper_panel.cpp',
-@@ -1230,2 +1232,4 @@
+@@ -1302,6 +1304,9 @@
+     'virtual_grid_view_gesture',
+     'wallpaper_scan_symlink',
      'wallpaper_shuffle_state',
 +    'wallpaper_media',
 +    'live_wallpaper_controller',
++    'wallpaper_integration',
      'wayland_output_scale',
+     'wayland_toplevels_identity',
+     'webp_decoder',
 --- a/src/shell/wallpaper/panel/wallpaper_panel.cpp
 +++ b/src/shell/wallpaper/panel/wallpaper_panel.cpp
 @@ -13,6 +13,7 @@
@@ -115,8 +120,8 @@
    Select* m_favoritePaletteDetailSelect = nullptr;
    Select* m_monitorSelect = nullptr;
    Input* m_filterInput = nullptr;
-@@ -166,6 +173,7 @@
-   bool m_flatten = false;
+@@ -167,6 +174,7 @@
+   bool m_showNames = true;
    bool m_scanPending = false;
    SortMode m_sortMode = SortMode::NameAsc;
 +  MediaFilter m_mediaFilterMode = MediaFilter::All;
@@ -125,11 +130,12 @@
    bool m_syncingFavoriteControls = false;
 --- a/src/shell/wallpaper/panel/wallpaper_scanner.cpp
 +++ b/src/shell/wallpaper/panel/wallpaper_scanner.cpp
-@@ -1,8 +1,8 @@
+@@ -1,9 +1,9 @@
  #include "shell/wallpaper/panel/wallpaper_scanner.h"
 
 -#include "core/files/directory_scanner.h"
  #include "core/log.h"
+ #include "util/file_utils.h"
  #include "util/string_utils.h"
 +#include <exception>
 
@@ -154,23 +160,22 @@
 
    // Pull the entry's modification time from the cached directory_entry metadata
    // so date sorting later never has to stat again.
-@@ -47,7 +59,7 @@
-       if (!entry.is_regular_file(typeEc) || typeEc) {
-         continue;
-       }
--      if (!DirectoryScanner::isImagePath(entry.path())) {
-+      if (!noctalia::wallpaper::WallpaperMedia::isSupportedPath(entry.path())) {
-         continue;
-       }
-       WallpaperEntry e;
-@@ -55,6 +67,7 @@
-       e.absPath = entry.path();
-       e.isDir = false;
-       cacheMtime(entry, e);
-+      cacheMedia(entry, e);
-       out.push_back(std::move(e));
-     }
-   }
+@@ -40,13 +52,14 @@
+           }
+           std::error_code typeEc;
+-          if (!entry.is_regular_file(typeEc) || typeEc || !DirectoryScanner::isImagePath(entry.path())) {
++          if (!entry.is_regular_file(typeEc) || typeEc || !noctalia::wallpaper::WallpaperMedia::isSupportedPath(entry.path())) {
+             return;
+           }
+           WallpaperEntry e;
+           e.name = entry.path().filename().string();
+           e.absPath = entry.path();
+           e.isDir = false;
+           cacheMtime(entry, e);
++          cacheMedia(entry, e);
+           out.push_back(std::move(e));
+         }
+     );
 @@ -79,12 +92,13 @@
          out.push_back(std::move(e));
          continue;
@@ -374,9 +379,9 @@
    instance->outputName = output.name;
 --- a/src/shell/wallpaper/wallpaper.h
 +++ b/src/shell/wallpaper/wallpaper.h
-@@ -2,6 +2,7 @@
-
- #include "config/config_types.h"
+@@ -4,6 +4,7 @@
+ #include "render/core/shared_texture_cache.h"
+ #include "render/core/wallpaper_types.h"
  #include "shell/wallpaper/wallpaper_shuffle_state.h"
 +#include "shell/wallpaper/live_wallpaper_controller.h"
  #include "ui/signal.h"
@@ -407,17 +412,17 @@
  #include "theme/palette_generator.h"
  #include "theme/palette_transform.h"
  #include "theme/scheme.h"
-@@ -423,7 +424,9 @@
-     }
-
-     profiling::StopWatch loadWatch;
--    auto image = loadAndResize(wallpaperPath, *scheme);
-+    const std::filesystem::path paletteSource =
-+        noctalia::wallpaper::WallpaperMedia::ensureThumbnail(std::filesystem::path(wallpaperPath));
-+    auto image = loadAndResize(paletteSource.string(), *scheme);
-     if (profiling::enabled()) {
-       kLog.info("theme: wallpaper load+resize: {:.1F} ms", loadWatch.elapsedMs());
-     }
+@@ -52,7 +53,9 @@
+     // Pure and thread-safe: runs on the wallpaper palette worker as well as the main thread.
+     std::optional<GeneratedPalette> decodeWallpaperPalette(const std::string& path, Scheme scheme) {
+       profiling::StopWatch loadWatch;
+-      auto image = loadAndResize(path, scheme);
++      const std::filesystem::path paletteSource =
++          noctalia::wallpaper::WallpaperMedia::ensureThumbnail(std::filesystem::path(path));
++      auto image = loadAndResize(paletteSource.string(), scheme);
+       if (profiling::enabled()) {
+         kLog.info("theme: wallpaper load+resize: {:.1F} ms", loadWatch.elapsedMs());
+       }
 --- /dev/null
 +++ b/src/shell/wallpaper/live_wallpaper_controller.h
 @@ -0,0 +1,70 @@
