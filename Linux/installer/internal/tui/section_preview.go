@@ -29,6 +29,8 @@ func sectionPreview(m sectionModel) []string {
 		return previewCleanup()
 	case "Doctor":
 		return previewDoctor()
+	case updateSection:
+		return previewUpdate()
 	case "Apply":
 		return previewApply()
 	case "Quit":
@@ -141,6 +143,14 @@ func previewApply() []string {
 		previewSettingWithLabel("Mirror /etc/nixos", "After dry-build success, backs up /etc/nixos and syncs the staging mirror.", "order", "3"),
 		previewSettingWithLabel("Apply dots", "Applies selected user dots in the same session and reloads Hypr when available.", "order", "4"),
 		previewSettingWithLabel("Switch", "TUI always asks before nixos-rebuild switch.", "order", "5"),
+	)
+}
+
+func previewUpdate() []string {
+	return previewSettings(
+		previewSettingWithLabel("Update installed system", "Updates Wahrwelt and dependencies using the settings saved on this machine. Changes made in this session belong to Apply.", "action", "update"),
+		previewSettingWithLabel("Custom configuration", "Preserves custom inputs and local modules while updating Wahrwelt-owned fields. Conflicting edits are reported before installation.", "status", "preserved"),
+		previewSettingWithLabel("Build and switch", "Builds the updated configuration before installing and switching to it.", "action", "update system"),
 	)
 }
 

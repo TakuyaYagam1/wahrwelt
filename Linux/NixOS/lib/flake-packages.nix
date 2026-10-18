@@ -41,6 +41,7 @@ let
     ldflags = [
       "-s"
       "-w"
+      "-X github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/app.SourceRevision=${inputs.self.rev or ""}"
     ];
     postInstall = ''
       ln -s wahrwelt $out/bin/mysetup

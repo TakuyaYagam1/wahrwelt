@@ -68,6 +68,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(tuiCommand(&opts))
 	root.AddCommand(applyCommand(&opts))
+	root.AddCommand(updateCommand(&opts))
 	root.AddCommand(doctorCommand(&opts))
 	root.AddCommand(cleanupCommand(&opts))
 	root.AddCommand(rollbackCommand(&opts))

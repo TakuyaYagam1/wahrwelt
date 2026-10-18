@@ -646,26 +646,34 @@ func copyExistingThinFlake(dest, target string, state config.State) (bool, error
 		}
 		return false, err
 	}
-	if !isThinWrapperFlake(string(data)) {
-		return false, nil
-	}
 	text := string(data)
-	if isGeneratedMySetupWrapperFlake(text) {
-		migrated, changed, err := migrateGeneratedThinFlake(text, state)
+	previous, err := readFlakeState(dest)
+	if err != nil {
+		return false, err
+	}
+	if isGeneratedMySetupWrapperFlake(text) || len(previous) != 0 {
+		plan, err := PlanFlake(text, state, previous)
 		if err != nil {
-			return false, fmt.Errorf("regenerate generated Wahrwelt wrapper: %w", err)
+			return false, fmt.Errorf("update Wahrwelt wrapper: %w", err)
 		}
-		if changed {
-			info, err := os.Stat(source)
-			if err != nil {
-				return false, err
-			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return false, err
-			}
-			return true, os.WriteFile(target, []byte(migrated), info.Mode().Perm())
+		info, err := os.Stat(source)
+		if err != nil {
+			return false, err
 		}
-		return true, copyFile(source, target)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return false, err
+		}
+		if err := os.WriteFile(target, []byte(plan.Content), info.Mode().Perm()); err != nil {
+			return false, err
+		}
+		return true, os.WriteFile(filepath.Join(filepath.Dir(target), FlakeStateName), plan.State, 0o644)
+	}
+	if !isThinWrapperFlake(text) {
+		return false, fmt.Errorf("existing flake.nix is not a recognized Wahrwelt wrapper; refusing to replace user configuration")
+	}
+	// The template's baseline cannot claim fields in a user-owned wrapper.
+	if err := os.Remove(filepath.Join(filepath.Dir(target), FlakeStateName)); err != nil && !os.IsNotExist(err) {
+		return false, err
 	}
 	return true, copyFile(source, target)
 }

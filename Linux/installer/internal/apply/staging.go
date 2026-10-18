@@ -177,6 +177,10 @@ func writeThinTemplates(staging string, state config.State, lockMode ...LockMode
 	if err != nil {
 		return err
 	}
+	plan, err := PlanFlake(flake, state, nil)
+	if err != nil {
+		return err
+	}
 	files := map[string]string{
 		"flake.nix":         flake,
 		"configuration.nix": ConfigurationNix(),
@@ -195,6 +199,9 @@ func writeThinTemplates(staging string, state config.State, lockMode ...LockMode
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", rel, err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(staging, FlakeStateName), plan.State, 0o644); err != nil {
+		return fmt.Errorf("write flake state: %w", err)
 	}
 	return writeUserDefaultTemplate(staging)
 }

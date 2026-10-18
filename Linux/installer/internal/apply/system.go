@@ -48,7 +48,7 @@ func (e *legacyUserMigrationCollisionError) Error() string {
 	return fmt.Sprintf("cannot migrate legacy user directory: target appeared during migration: %s", e.path)
 }
 
-func writeSystemConfiguration(ctx context.Context, runner run.CommandRunner, staging string, opts Options, layout Layout) (systemWriteResult, error) {
+func writeSystemConfiguration(ctx context.Context, runner run.CommandRunner, staging string, opts Options, layout Layout, guards ...func() error) (systemWriteResult, error) {
 	var result systemWriteResult
 	dest := opts.Paths.NixOSDest
 	backupPath, err := backupExisting(ctx, runner, dest)
@@ -56,6 +56,11 @@ func writeSystemConfiguration(ctx context.Context, runner run.CommandRunner, sta
 		return result, err
 	}
 	result.BackupPath = backupPath
+	if err := verifySystemWrite(guards); err != nil {
+		// A broad restore would overwrite the user edit being preserved.
+		result.skipAutomaticRestore = true
+		return result, err
+	}
 	migratedLegacyUser, err := migrateLegacyUserDirectoryWithResult(ctx, runner, dest)
 	if err != nil {
 		// The migration is the first destination mutation after the backup and
@@ -74,6 +79,10 @@ func writeSystemConfiguration(ctx context.Context, runner run.CommandRunner, sta
 			return result, err
 		}
 	}
+	if err := verifySystemWrite(guards); err != nil {
+		result.skipAutomaticRestore = true
+		return result, err
+	}
 	if err := syncToEtc(ctx, runner, staging, dest, layout); err != nil {
 		return result, err
 	}
@@ -89,6 +98,17 @@ func writeSystemConfiguration(ctx context.Context, runner run.CommandRunner, sta
 	return result, nil
 }
 
+func verifySystemWrite(guards []func() error) error {
+	for _, verify := range guards {
+		if verify != nil {
+			if err := verify(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func syncToEtc(ctx context.Context, runner run.CommandRunner, staging, dest string, layout Layout) error {
 	return runner.Command(ctx, "sudo", syncToEtcArgs(staging, dest, layout)...)
 }
@@ -101,7 +121,7 @@ func syncToEtcArgs(staging, dest string, layout ...Layout) []string {
 	if targetLayout == LayoutFull {
 		return syncToEtcFullArgs(staging, dest)
 	}
-	return []string{
+	args := []string{
 		"rsync", "-a", "--checksum", "--chmod=u+w",
 		"--exclude=/installer-state.json",
 		"--exclude=.wahrwelt-installer-recovery-*/",
@@ -110,9 +130,11 @@ func syncToEtcArgs(staging, dest string, layout ...Layout) []string {
 		"--exclude=/mysetup/",
 		"--exclude=/secrets/",
 		"--exclude=/hashed-password.nix",
-		staging + "/",
-		dest + "/",
 	}
+	for _, name := range thinPublishedFiles {
+		args = append(args, "--include=/"+name)
+	}
+	return append(args, "--exclude=/*", staging+"/", dest+"/")
 }
 
 func syncToEtcFullArgs(staging, dest string) []string {

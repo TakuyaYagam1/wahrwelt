@@ -132,22 +132,7 @@ _:
       '';
 
       nixos-update = ''
-        set -l old_pwd $PWD
-
-        cd /etc/nixos
-        or return $status
-
-        /run/wrappers/bin/sudo /run/current-system/sw/bin/nix flake update $argv
-        set -l update_status $status
-        if test $update_status -ne 0
-            cd "$old_pwd"
-            return $update_status
-        end
-
-        /run/wrappers/bin/sudo /run/current-system/sw/bin/nixos-rebuild switch --impure --option max-jobs auto --option cores 0 --flake .#NixOS
-        set -l rebuild_status $status
-        cd "$old_pwd"
-        return $rebuild_status
+        command wahrwelt update $argv
       '';
 
       nixos-install = ''

@@ -163,9 +163,12 @@ func Matches(target string, content []byte, mode fs.FileMode) (bool, error) {
 
 // Write replaces one unchanged transaction member. A second replacement must
 // first rollback or start a new transaction.
-//
-//nolint:gocyclo // Exchange, recovery, and journal publication are one auditable transaction state machine.
 func Write(transactionPath, target string, content []byte, mode fs.FileMode) error {
+	return write(transactionPath, target, content, mode, false)
+}
+
+//nolint:gocyclo // Exchange, recovery, and journal publication are one auditable transaction state machine.
+func write(transactionPath, target string, content []byte, mode fs.FileMode, preserveOwner bool) error {
 	tx, err := loadTransaction(transactionPath)
 	if err != nil {
 		return err
@@ -198,7 +201,13 @@ func Write(transactionPath, target string, content []byte, mode fs.FileMode) err
 			return err
 		}
 	}
-	candidate, candidateState, err := createCandidate(parent.fd, content, mode)
+	var candidate string
+	var candidateState fileState
+	if preserveOwner && current.Identity.Kind == KindRegular {
+		candidate, candidateState, err = createOwnedCandidate(parent.fd, filepath.Base(target), current.Identity, content, mode)
+	} else {
+		candidate, candidateState, err = createCandidate(parent.fd, content, mode)
+	}
 	if err != nil {
 		return err
 	}

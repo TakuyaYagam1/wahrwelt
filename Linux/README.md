@@ -571,10 +571,12 @@ The installer applies changes defensively:
    Existing `hashed-password.nix` files are handled only as exact v1 migration
    inputs. Existing `private/` trees are renamed to `user/`
    only when the canonical target is absent. Existing legacy MySetup thin installs also keep
-   `flake.lock`, `configuration.nix`, and `home.nix`; generated wrapper
-   `flake.nix` files may be regenerated to pick up the selected lock mode.
-   Stock NixOS or legacy non-thin configs are replaced with the generated thin
-   wrapper and clean override templates.
+   `flake.lock`, `configuration.nix`, and `home.nix`. Existing wrapper
+   `flake.nix` files receive targeted changes to Wahrwelt-owned fields;
+   custom inputs, modules, and outputs are preserved. Conflicting user edits
+   stop the apply before publication.
+   A missing flake gets a new thin wrapper. An existing unrecognized flake
+   requires explicit migration and is left unchanged.
 4. Publishes the password hash as root-owned
    `/etc/wahrwelt/hashed-password`; the staging flake contains only a non-secret
    enable marker.
@@ -664,6 +666,13 @@ nix run --refresh 'github:TakuyaYagam1/wahrwelt/dev?dir=Linux/NixOS#wahrwelt' --
 nix run "path:$PWD?dir=Linux/NixOS#wahrwelt" -- doctor
 nix run "path:$PWD?dir=Linux/NixOS#wahrwelt" -- print-state
 
+# Update the installed system using its saved settings.
+nix run --refresh 'github:TakuyaYagam1/wahrwelt?dir=Linux/NixOS#wahrwelt' -- update
+
+# Preview wrapper changes, or build the update without installing it.
+nix run --refresh 'github:TakuyaYagam1/wahrwelt?dir=Linux/NixOS#wahrwelt' -- update --dry-run
+nix run --refresh 'github:TakuyaYagam1/wahrwelt?dir=Linux/NixOS#wahrwelt' -- update --no-switch
+
 # Non-interactive apply commands. These use saved state and do not open the TUI.
 nix run "path:$PWD?dir=Linux/NixOS#wahrwelt" -- apply --no-switch
 nix run "path:$PWD?dir=Linux/NixOS#wahrwelt" -- apply --source-channel development --no-switch
@@ -678,7 +687,7 @@ nix run "path:$PWD?dir=Linux/NixOS#wahrwelt" -- cleanup
 `nixos-rebuild dry-build`, before writing `/etc/nixos`, user dotfiles,
 activation, or activated state.
 
-Use `--dry-run` to preview filesystem actions where supported. The installer logs
+Use `apply --dry-run` to preview filesystem actions. The installer logs
 commands but does not execute external command actions through the shared runner,
 and it avoids host-local side effects such as password hashing or writing
 `/etc/nixos`:
@@ -917,27 +926,65 @@ run `wahrwelt doctor` and check the relevant log.
 
 ## Maintenance
 
-System update:
+Update the installed system with:
 
 ```bash
-cd /etc/nixos
-sudo nix flake update
-sudo nixos-rebuild switch --flake .#NixOS
+nixos-update
 ```
+
+`nixos-update`, `nixy update`, and the TUI action **Update installed system**
+use `wahrwelt update`. It reads the saved settings of the installed host,
+updates Wahrwelt-owned fields in `flake.nix`, updates the lock, and builds
+the system before publishing the files and switching. Custom inputs, local
+modules, outputs, and comments are preserved. The TUI update action keeps
+edits made during the current session for a later **Apply**; it does not run
+the installer's dotfile sync.
+
+For the first update from an older installation, run the fresh updater once:
+
+```bash
+nix run --refresh 'github:TakuyaYagam1/wahrwelt?dir=Linux/NixOS#wahrwelt' -- update
+```
+
+This also works when the old `nixos-update` fails while evaluating the host
+flake, such as after the Zen input change. The old shell command cannot
+upgrade its own update logic. After the new system is activated,
+open a new shell so `nixos-update` loads the updated function and uses the
+same updater for subsequent releases.
+
+The updater follows the Wahrwelt source selected by the installed wrapper.
+That source must currently use a literal `github:` URL; custom inputs can
+keep their own source types.
+Use `update --dry-run` to see proposed managed-field changes, or
+`update --no-switch` to build the proposed system without publishing the
+wrapper, lock, or migration state and without switching the system.
 
 Default thin installs use an independent host lock: `/etc/nixos/flake.lock`
 owns nixpkgs, Home Manager, Stylix, Quickshell, shell flakes, and the selected
 Wahrwelt source revision. The `stable` channel uses the `main` branch; the
-`development` channel uses `dev`. Managed thin installs update only the
-`wahrwelt` input (plus host-owned Lanzaboote when Secure Boot is enabled) and
-reuse the selected preset's transitive lock shipped by Wahrwelt.
+`development` channel uses `dev`. Updates of managed thin installs change
+only the `wahrwelt` input by default and reuse the selected preset's
+transitive lock shipped by Wahrwelt. Host-owned Lanzaboote stays pinned
+unless named explicitly with `wahrwelt update lanzaboote`.
 
-Existing recognized installer-generated wrappers are canonically regenerated
-on the next `wahrwelt apply`, preserving the selected channel and lock mode
-while switching to the matching preset entrypoint. A plain `nixos-update`
-continues to update `/etc/nixos/flake.lock` and rebuild normally. Changing the
-preset or toggling Secure Boot requires one `wahrwelt apply` so the wrapper
-structure can be regenerated; unrecognized user-owned flakes are preserved.
+The file `/etc/nixos/wahrwelt-flake.json` records the managed fields last
+installed by Wahrwelt. Updates compare these values with the current file
+and the new defaults. Unmodified managed fields can be added, updated, or
+removed; independent user edits are preserved. If both the user and Wahrwelt
+changed a field differently, the update reports the conflict and leaves the
+installed files unchanged. A retired input with remaining custom references
+requires explicit resolution before removal.
+
+Older wrappers without this record use migrations for recognized released
+values. The `Generated by Wahrwelt` comment alone does not grant ownership
+of the whole file. Unsupported expressions or conflicting edits need to be
+resolved explicitly; an existing wrapper is never replaced wholesale.
+
+Update preparation happens in a staging copy. Failed reconciliation or
+builds leave the installed files untouched. Before publication the updater
+checks for concurrent changes and retains a backup for recovery. Changes to
+the package preset, Secure Boot, or other saved settings still go through
+**Apply**, which uses the same reconciliation for the wrapper.
 
 Garbage collection:
 

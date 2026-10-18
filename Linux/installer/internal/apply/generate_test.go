@@ -994,7 +994,7 @@ func mustMigrateGeneratedThinFlake(t *testing.T, text string, state config.State
 	return migrated, changed
 }
 
-func TestMigrateGeneratedThinFlakeCanonicallyRegeneratesInstallerOwnedWrapper(t *testing.T) {
+func TestMigrateGeneratedThinFlakePreservesCustomInput(t *testing.T) {
 	old := `{
   description = "Host-local MySetup NixOS wrapper";
 
@@ -1047,12 +1047,20 @@ func TestMigrateGeneratedThinFlakeCanonicallyRegeneratesInstallerOwnedWrapper(t 
 	if !changed {
 		t.Fatal("expected generated thin flake migration to report a change")
 	}
-	want, err := FlakeNix(config.Default(), LockModeIndependent)
-	if err != nil {
-		t.Fatal(err)
+	for _, want := range []string{
+		"custom-overlay = {\n      url = \"github:example/custom-overlay\";\n      inputs.nixpkgs.follows = \"nixpkgs\";\n    };",
+		`inputs.custom-overlay.follows = "custom-overlay";`,
+		`outputs = { wahrwelt, ... }:`,
+		`extraModules = [ ./configuration.nix ];`,
+	} {
+		if !strings.Contains(migrated, want) {
+			t.Fatalf("migration lost preserved source %q\n%s", want, migrated)
+		}
 	}
-	if migrated != want {
-		t.Fatalf("installer-owned wrapper must be canonically regenerated\nwant:\n%s\ngot:\n%s", want, migrated)
+	for _, retired := range []string{`noctalia-shell = {`, `templ = {`} {
+		if strings.Contains(migrated, retired) {
+			t.Fatalf("migration kept retired input %q\n%s", retired, migrated)
+		}
 	}
 }
 
@@ -1548,7 +1556,7 @@ func TestPrepareThinHostLocalRejectsLegacyUserFile(t *testing.T) {
 	}
 }
 
-func TestPrepareThinHostLocalReplacesLegacyFullFlake(t *testing.T) {
+func TestPrepareThinHostLocalRejectsUnrecognizedExistingFlake(t *testing.T) {
 	staging := t.TempDir()
 	dest := t.TempDir()
 	for path, content := range map[string]string{
@@ -1570,8 +1578,8 @@ func TestPrepareThinHostLocalReplacesLegacyFullFlake(t *testing.T) {
 		}
 	}
 
-	if err := prepareStagingHostLocal(context.Background(), run.Runner{Stdout: io.Discard, Stderr: io.Discard}, staging, dest, config.Default(), config.Secrets{}, LayoutThin); err != nil {
-		t.Fatal(err)
+	if err := prepareStagingHostLocal(context.Background(), run.Runner{Stdout: io.Discard, Stderr: io.Discard}, staging, dest, config.Default(), config.Secrets{}, LayoutThin); err == nil || !strings.Contains(err.Error(), "refusing to replace user configuration") {
+		t.Fatalf("expected existing flake ownership conflict, got %v", err)
 	}
 
 	data, err := os.ReadFile(filepath.Join(staging, "flake.nix"))

@@ -17,6 +17,7 @@ import (
 	"github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/defaults"
 	"github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/dots"
 	"github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/fsowner"
+	"github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/hosttree"
 	"github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/paths"
 	"github.com/TakuyaYagam1/wahrwelt/Linux/installer/internal/run"
 	"golang.org/x/sys/unix"
@@ -153,7 +154,7 @@ func runStagedApply(ctx context.Context, runner run.CommandRunner, src paths.Sou
 			return fmt.Errorf("preflight legacy installer state cleanup; live configuration was not modified: %w", err)
 		}
 	}
-	result, err := writeSystemConfiguration(ctx, runner, validated.path, opts, modes.layout)
+	result, err := writeSystemConfiguration(ctx, runner, validated.path, opts, modes.layout, validated.verify)
 	if err != nil {
 		return handleSystemWriteFailure(ctx, runner, opts.Paths.NixOSDest, result, err)
 	}
@@ -221,10 +222,18 @@ func legacyStateExpectationForApply(opts Options, legacyStatePaths []string) (le
 }
 
 func prepareStagedApply(ctx context.Context, runner run.CommandRunner, src paths.Sources, staging string, opts Options, modes applyModes, verifyBeforeSnapshot ...func() error) (*validatedStaging, error) {
+	verifyHost, err := captureHostFiles(opts.Paths.NixOSDest, modes.layout)
+	if err != nil {
+		return nil, err
+	}
 	if err := stageConfiguration(ctx, runner, src, staging, opts.State, modes.layout, modes.lockMode); err != nil {
 		return nil, err
 	}
 	if err := prepareStagingHostLocal(ctx, runner, staging, opts.Paths.NixOSDest, opts.State, opts.Secrets, modes.layout); err != nil {
+		return nil, err
+	}
+	extraFiles, err := stageHostExtras(staging, opts.Paths.NixOSDest, modes.layout)
+	if err != nil {
 		return nil, err
 	}
 	if err := lockStagingFlake(ctx, runner, staging, modes.layout, modes.lockMode); err != nil {
@@ -246,12 +255,28 @@ func prepareStagedApply(ctx context.Context, runner run.CommandRunner, src paths
 		validated.close()
 		return nil, fmt.Errorf("dry-build failed; /etc/nixos was not modified: %w", err)
 	}
+	validated.verifyHost = func() error {
+		if verifyHost != nil {
+			if err := verifyHost(); err != nil {
+				return err
+			}
+		}
+		if extraFiles != nil {
+			return hosttree.Verify(opts.Paths.NixOSDest, *extraFiles)
+		}
+		return nil
+	}
+	if err := validated.verify(); err != nil {
+		validated.close()
+		return nil, err
+	}
 	return validated, nil
 }
 
 type validatedStaging struct {
-	path      string
-	gcRootDir *os.File
+	path       string
+	gcRootDir  *os.File
+	verifyHost func() error
 }
 
 func (v *validatedStaging) close() {
@@ -264,6 +289,11 @@ func (v *validatedStaging) close() {
 func (v *validatedStaging) verify() error {
 	if v == nil || v.path == "" {
 		return fmt.Errorf("missing validated staging candidate")
+	}
+	if v.verifyHost != nil {
+		if err := v.verifyHost(); err != nil {
+			return err
+		}
 	}
 	if v.gcRootDir == nil {
 		return nil

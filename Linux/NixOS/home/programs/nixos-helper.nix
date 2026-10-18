@@ -1,18 +1,27 @@
-{ wahrwelt, pkgs, ... }:
+{
+  wahrwelt,
+  pkgs,
+  inputs,
+  ...
+}:
 
 let
   cfg = wahrwelt.host.configDirectory;
   host = wahrwelt.host.hostname;
+  installer = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.wahrwelt;
 
   nixy = pkgs.writeShellApplication {
     name = "nixy";
-    runtimeInputs = with pkgs; [
+    runtimeInputs = [
+      installer
+    ]
+    ++ (with pkgs; [
       fzf
       git
       coreutils
       nix
       nvd
-    ];
+    ]);
     text = ''
       CFG="${cfg}"
       HOST="${host}"
@@ -40,8 +49,7 @@ let
       }
 
       update() {
-        lock_cmd
-        (cd "$CFG" && sudo nixos-rebuild switch --flake ".#$HOST")
+        wahrwelt update --dest "$CFG" --state "$CFG/installer-state.json" "''${EXTRA[@]}"
       }
 
       gc() {
@@ -106,5 +114,8 @@ let
   };
 in
 {
-  home.packages = [ nixy ];
+  home.packages = [
+    nixy
+    installer
+  ];
 }

@@ -18,6 +18,8 @@ import (
 
 var errBackToSections = errors.New("back to section selector")
 
+const updateSection = "Update installed system"
+
 type Options struct {
 	Paths    paths.Options
 	DryRun   bool
@@ -47,6 +49,7 @@ var sections = []string{
 	"Dots",
 	"Cleanup",
 	"Doctor",
+	updateSection,
 	"Apply",
 	"Quit",
 }
@@ -113,17 +116,18 @@ func handleSectionResult(
 
 func runSection(ctx context.Context, s *session, selected string) error {
 	handlers := map[string]func() error{
-		"General":   func() error { return editGeneral(s) },
-		"User":      func() error { return editUser(s) },
-		"Region":    func() error { return editRegion(s) },
-		"Display":   func() error { return editDisplay(ctx, s) },
-		"Packages":  func() error { return editPackages(s) },
-		"Services":  func() error { return editServices(s) },
-		"Dots":      func() error { return editDots(s) },
-		"Passwords": func() error { return editSecrets(s) },
-		"Cleanup":   func() error { return runCleanup(ctx, s) },
-		"Doctor":    func() error { return showDoctor(ctx, s) },
-		"Apply":     func() error { return runApply(ctx, s) },
+		"General":     func() error { return editGeneral(s) },
+		"User":        func() error { return editUser(s) },
+		"Region":      func() error { return editRegion(s) },
+		"Display":     func() error { return editDisplay(ctx, s) },
+		"Packages":    func() error { return editPackages(s) },
+		"Services":    func() error { return editServices(s) },
+		"Dots":        func() error { return editDots(s) },
+		"Passwords":   func() error { return editSecrets(s) },
+		"Cleanup":     func() error { return runCleanup(ctx, s) },
+		"Doctor":      func() error { return showDoctor(ctx, s) },
+		updateSection: func() error { return runUpdate(ctx, s) },
+		"Apply":       func() error { return runApply(ctx, s) },
 	}
 	handler, ok := handlers[selected]
 	if !ok {
@@ -133,7 +137,7 @@ func runSection(ctx context.Context, s *session, selected string) error {
 }
 
 func isDirtySection(selected string) bool {
-	return selected != "Apply" && selected != "Doctor" && selected != "Cleanup" && selected != "Passwords"
+	return selected != "Apply" && selected != updateSection && selected != "Doctor" && selected != "Cleanup" && selected != "Passwords"
 }
 
 func loadInitialState(opts paths.Options) (config.State, error) {
