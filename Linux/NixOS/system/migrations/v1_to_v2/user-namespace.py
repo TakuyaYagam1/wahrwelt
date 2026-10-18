@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """One-shot v1_to_v2 migration for host-local config and installer state."""
 
 from __future__ import annotations
@@ -41,7 +40,9 @@ def duplicate_directory(path: Path) -> int:
         fd = os.open(path, flags)
     if not stat.S_ISDIR(os.fstat(fd).st_mode):
         os.close(fd)
-        raise MigrationError(f"ownership collision: {path} must be an ordinary directory")
+        raise MigrationError(
+            f"ownership collision: {path} must be an ordinary directory"
+        )
     return fd
 
 
@@ -73,7 +74,9 @@ def create_owned_temp(kind: str, parent: Path, prefix: str) -> None:
                 created = os.fstat(created_fd)
                 visible = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
                 expected_type = stat.S_ISDIR if kind == "directory" else stat.S_ISREG
-                if not expected_type(created.st_mode) or not expected_type(visible.st_mode):
+                if not expected_type(created.st_mode) or not expected_type(
+                    visible.st_mode
+                ):
                     raise MigrationError(
                         f"ownership collision: created {kind} changed type before handoff: {name}"
                     )
@@ -96,7 +99,9 @@ def find_owned_temp(parent: Path, identity: str) -> None:
         device_text, inode_text = identity.split(":", 1)
         expected = int(device_text), int(inode_text)
     except (TypeError, ValueError) as error:
-        raise MigrationError(f"invalid temporary object identity: {identity!r}") from error
+        raise MigrationError(
+            f"invalid temporary object identity: {identity!r}"
+        ) from error
 
     parent_fd = duplicate_directory(parent)
     try:
@@ -117,12 +122,16 @@ def lstat_optional(path: Path) -> os.stat_result | None:
 
 def require_directory(path: Path, info: os.stat_result | None) -> None:
     if info is not None and not stat.S_ISDIR(info.st_mode):
-        raise MigrationError(f"ownership collision: {path} must be an ordinary directory")
+        raise MigrationError(
+            f"ownership collision: {path} must be an ordinary directory"
+        )
 
 
 def require_regular(path: Path, info: os.stat_result | None) -> None:
     if info is not None and not stat.S_ISREG(info.st_mode):
-        raise MigrationError(f"ownership collision: {path} must be an ordinary regular file")
+        raise MigrationError(
+            f"ownership collision: {path} must be an ordinary regular file"
+        )
 
 
 def mount_points() -> set[str]:
@@ -147,7 +156,9 @@ def mount_points() -> set[str]:
     return decoded
 
 
-def reject_mountpoint(path: Path, info: os.stat_result | None, mounted: set[str]) -> None:
+def reject_mountpoint(
+    path: Path, info: os.stat_result | None, mounted: set[str]
+) -> None:
     if info is not None and os.path.abspath(path) in mounted:
         raise MigrationError(f"ownership collision: {path} is a mountpoint")
 
@@ -196,7 +207,9 @@ def require_json_shape(
     missing = sorted(required - payload.keys())
     unknown = sorted(payload.keys() - allowed)
     if missing:
-        raise MigrationError(f"{display} is missing required fields: {', '.join(missing)}")
+        raise MigrationError(
+            f"{display} is missing required fields: {', '.join(missing)}"
+        )
     if unknown:
         raise MigrationError(f"{display} has unknown fields: {', '.join(unknown)}")
     return payload
@@ -266,7 +279,9 @@ def validate_installer_state_payload(payload: bytes, path: Path) -> None:
         required.add("noctalia")
     require_json_shape(root, "state payload", required, optional)
 
-    require_json_strings(root["host"], "state payload.host", {"hostname", "stateVersion"})
+    require_json_strings(
+        root["host"], "state payload.host", {"hostname", "stateVersion"}
+    )
     require_json_strings(
         root["user"],
         "state payload.user",
@@ -301,7 +316,9 @@ def validate_installer_state_payload(payload: bytes, path: Path) -> None:
     if "extraMonitors" in display:
         monitors = display["extraMonitors"]
         if type(monitors) is not list:
-            raise MigrationError("state payload.display.extraMonitors must be a JSON array")
+            raise MigrationError(
+                "state payload.display.extraMonitors must be a JSON array"
+            )
         for index, monitor in enumerate(monitors):
             require_json_strings(
                 monitor,
@@ -375,7 +392,9 @@ def regular_state_snapshot(path: Path) -> dict[str, object]:
     try:
         before = os.fstat(fd)
         if not stat.S_ISREG(before.st_mode):
-            raise MigrationError(f"ownership collision: {path} must remain a regular file")
+            raise MigrationError(
+                f"ownership collision: {path} must remain a regular file"
+            )
         if before.st_nlink != 1:
             raise MigrationError(
                 f"ownership collision: {path} has unsupported hardlink count {before.st_nlink}"
@@ -397,9 +416,19 @@ def regular_state_snapshot(path: Path) -> dict[str, object]:
                     f"ownership collision: {path} exceeds the installer state size limit"
                 )
         after = os.fstat(fd)
-        fields = ("st_mode", "st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_nlink")
+        fields = (
+            "st_mode",
+            "st_dev",
+            "st_ino",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+            "st_nlink",
+        )
         if any(getattr(before, field) != getattr(after, field) for field in fields):
-            raise MigrationError(f"ownership collision: {path} changed while being validated")
+            raise MigrationError(
+                f"ownership collision: {path} changed while being validated"
+            )
         content = b"".join(chunks)
         return {
             "device": before.st_dev,
@@ -422,7 +451,9 @@ def validate_legacy_installer_state(path: Path) -> dict[str, object]:
         validate_installer_state_payload(bytes(proof["content"]), path)
         return proof
     except (MigrationError, OSError, UnicodeError, ValueError, TypeError) as error:
-        if isinstance(error, MigrationError) and str(error).startswith("ownership collision:"):
+        if isinstance(error, MigrationError) and str(error).startswith(
+            "ownership collision:"
+        ):
             raise
         raise MigrationError(
             f"ownership collision: {path} is not a recognized Wahrwelt/MySetup installer state: {error}"
@@ -439,9 +470,7 @@ def require_unchanged_legacy_installer_state(
             f"ownership collision: {path} changed after validation: {error}"
         ) from error
     if actual != expected:
-        raise MigrationError(
-            f"ownership collision: {path} changed after validation"
-        )
+        raise MigrationError(f"ownership collision: {path} changed after validation")
 
 
 def installer_state_matches_published_proof(
@@ -529,7 +558,9 @@ def require_published_legacy_installer_state(
 def inspect_namespace(root: Path) -> dict[str, object]:
     root_info = lstat_optional(root)
     if root_info is None or not stat.S_ISDIR(root_info.st_mode):
-        raise MigrationError(f"ownership collision: {root} must be an ordinary directory")
+        raise MigrationError(
+            f"ownership collision: {root} must be an ordinary directory"
+        )
 
     private = root / "private"
     user = root / "user"
@@ -566,9 +597,7 @@ def inspect_namespace(root: Path) -> dict[str, object]:
     if legacy_wahrwelt_parent_info is not None:
         legacy_wahrwelt_state_info = lstat_optional(legacy_wahrwelt_state)
         require_regular(legacy_wahrwelt_state, legacy_wahrwelt_state_info)
-        reject_mountpoint(
-            legacy_wahrwelt_state, legacy_wahrwelt_state_info, mounted
-        )
+        reject_mountpoint(legacy_wahrwelt_state, legacy_wahrwelt_state_info, mounted)
     legacy_mysetup_state_info = None
     if legacy_mysetup_parent_info is not None:
         legacy_mysetup_state_info = lstat_optional(legacy_mysetup_state)
@@ -750,7 +779,9 @@ def rewrite_indented_string(source: str, index: int) -> tuple[str, int]:
             expression, index, closed = rewrite_nix_code(source, index + 2, True)
             output.append(expression)
             if not closed:
-                raise MigrationError("unterminated Nix interpolation in indented string")
+                raise MigrationError(
+                    "unterminated Nix interpolation in indented string"
+                )
             output.append("}")
             index += 1
             continue
@@ -1007,7 +1038,9 @@ def inspect_completion(root: Path) -> str:
             info.st_mtime_ns,
             info.st_ctime_ns,
         )
-        if identity(before) != identity(after) or identity(after) != identity(final_visible):
+        if identity(before) != identity(after) or identity(after) != identity(
+            final_visible
+        ):
             raise MigrationError(
                 f"ownership collision: completion marker {root / COMPLETION_NAME} changed while being validated"
             )
@@ -1090,7 +1123,10 @@ def quarantine_exact_empty_legacy_state_parent(
             f"ownership collision: legacy state parent changed before quarantine: {root / parent_name}"
         )
     pinned = os.fstat(parent_fd)
-    if not stat.S_ISDIR(pinned.st_mode) or (pinned.st_dev, pinned.st_ino) != expected_identity:
+    if (
+        not stat.S_ISDIR(pinned.st_mode)
+        or (pinned.st_dev, pinned.st_ino) != expected_identity
+    ):
         raise MigrationError(
             f"ownership collision: pinned legacy state parent changed before quarantine: {root / parent_name}"
         )
@@ -1216,7 +1252,9 @@ def migrate_stage(root: Path) -> None:
 def validate_migrated(root: Path) -> None:
     state = inspect_namespace(root)
     if state["legacy_user"]:
-        raise MigrationError(f"migration left legacy user directory at {root / 'private'}")
+        raise MigrationError(
+            f"migration left legacy user directory at {root / 'private'}"
+        )
     if state["legacy_state"]:
         raise MigrationError("migration left a legacy installer state file")
     if has_legacy_nix_path(root):
@@ -1253,7 +1291,9 @@ def xattr_snapshot(path: Path) -> list[list[str]]:
         try:
             value = os.getxattr(path, name, follow_symlinks=False)
         except OSError as error:
-            raise MigrationError(f"cannot read extended attribute {name!r} for {path}") from error
+            raise MigrationError(
+                f"cannot read extended attribute {name!r} for {path}"
+            ) from error
         attributes.append([name, hashlib.sha256(value).hexdigest()])
     return attributes
 
@@ -1320,7 +1360,9 @@ def snapshot_entries(root: Path) -> list[dict[str, object]]:
         metadata = metadata_snapshot(info)
         if metadata != metadata_snapshot(after):
             raise MigrationError(f"configuration changed while snapshotting {path}")
-        entries.append({"path": relative, **metadata, "payload": payload, "xattrs": xattrs})
+        entries.append(
+            {"path": relative, **metadata, "payload": payload, "xattrs": xattrs}
+        )
         if stat.S_ISDIR(info.st_mode):
             children = sorted(path.iterdir(), reverse=True)
             pending.extend(children)
@@ -1336,7 +1378,9 @@ def xattr_snapshot_fd(node_fd: int, display: str) -> list[list[str]]:
     except OSError as error:
         if error.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
             return []
-        raise MigrationError(f"cannot list extended attributes for {display}") from error
+        raise MigrationError(
+            f"cannot list extended attributes for {display}"
+        ) from error
     attributes: list[list[str]] = []
     for name in sorted(names):
         try:
@@ -1388,7 +1432,9 @@ def snapshot_entries_fd(root_fd: int, display_root: Path) -> list[dict[str, obje
         metadata = metadata_snapshot(info)
         if metadata != metadata_snapshot(after):
             raise MigrationError(f"configuration changed while snapshotting {display}")
-        entries.append({"path": relative, **metadata, "payload": payload, "xattrs": xattrs})
+        entries.append(
+            {"path": relative, **metadata, "payload": payload, "xattrs": xattrs}
+        )
         if not stat.S_ISDIR(mode):
             return
 
@@ -1399,17 +1445,23 @@ def snapshot_entries_fd(root_fd: int, display_root: Path) -> list[dict[str, obje
                 info.st_dev,
                 info.st_ino,
             ):
-                raise MigrationError(f"directory identity changed while opening {display}")
+                raise MigrationError(
+                    f"directory identity changed while opening {display}"
+                )
             for child_name in sorted(os.listdir(directory_fd)):
                 if child_name in (".", "..") or "/" in child_name:
-                    raise MigrationError(f"invalid directory entry while snapshotting {display}")
+                    raise MigrationError(
+                        f"invalid directory entry while snapshotting {display}"
+                    )
                 child_fd = os.open(
                     child_name,
                     os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC,
                     dir_fd=directory_fd,
                 )
                 try:
-                    child_relative = child_name if relative == "." else relative + "/" + child_name
+                    child_relative = (
+                        child_name if relative == "." else relative + "/" + child_name
+                    )
                     visit(child_fd, child_relative)
                 finally:
                     os.close(child_fd)
@@ -1431,7 +1483,7 @@ def equal_after_directory_exchange(
 ) -> bool:
     if len(actual) != len(expected):
         return False
-    for actual_entry, expected_entry in zip(actual, expected):
+    for actual_entry, expected_entry in zip(actual, expected, strict=True):
         if actual_entry.get("path") != expected_entry.get("path"):
             return False
         if actual_entry.get("path") != ".":
@@ -1565,7 +1617,13 @@ def rename_exchange(parent_fd: int, left: str, right: str) -> None:
     renameat2 = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
     if renameat2 is None:
         raise MigrationError("renameat2 is unavailable; cannot exchange atomically")
-    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
     renameat2.restype = ctypes.c_int
     if renameat2(parent_fd, os.fsencode(left), parent_fd, os.fsencode(right), 2) != 0:
         error_number = ctypes.get_errno()
@@ -1589,14 +1647,22 @@ def open_expected_directory(
 
 
 def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
-    if live.parent != candidate.parent or live.name in ("", ".", "..") or candidate.name in ("", ".", ".."):
-        raise MigrationError("live and candidate must be distinct same-parent directory entries")
+    if (
+        live.parent != candidate.parent
+        or live.name in ("", ".", "..")
+        or candidate.name in ("", ".", "..")
+    ):
+        raise MigrationError(
+            "live and candidate must be distinct same-parent directory entries"
+        )
     if live.name == candidate.name:
         raise MigrationError("live and candidate directory entries must differ")
 
     parent_info = lstat_optional(live.parent)
     if parent_info is None or not stat.S_ISDIR(parent_info.st_mode):
-        raise MigrationError(f"ownership collision: {live.parent} must be an ordinary directory")
+        raise MigrationError(
+            f"ownership collision: {live.parent} must be an ordinary directory"
+        )
     inspect_namespace(live)
     validate_migrated(candidate)
     live_info = live.lstat()
@@ -1630,7 +1696,10 @@ def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
             parent_fd, live.name, live_identity, "pre-publication revalidation"
         )
         require_directory_identity_at(
-            parent_fd, candidate.name, candidate_identity, "pre-publication revalidation"
+            parent_fd,
+            candidate.name,
+            candidate_identity,
+            "pre-publication revalidation",
         )
         live_owner_fd = open_expected_directory(
             parent_fd, live.name, live_identity, "retain live owner"
@@ -1641,16 +1710,24 @@ def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
         try:
             publish_barrier()
             visible_parent = lstat_optional(live.parent)
-            if visible_parent is None or (visible_parent.st_dev, visible_parent.st_ino) != (
+            if visible_parent is None or (
+                visible_parent.st_dev,
+                visible_parent.st_ino,
+            ) != (
                 opened_parent.st_dev,
                 opened_parent.st_ino,
             ):
-                raise MigrationError("publication parent changed before pinned publication")
+                raise MigrationError(
+                    "publication parent changed before pinned publication"
+                )
             require_directory_identity_at(
                 parent_fd, live.name, live_identity, "pre-exchange revalidation"
             )
             require_directory_identity_at(
-                parent_fd, candidate.name, candidate_identity, "pre-exchange revalidation"
+                parent_fd,
+                candidate.name,
+                candidate_identity,
+                "pre-exchange revalidation",
             )
             try:
                 rename_exchange(parent_fd, live.name, candidate.name)
@@ -1665,16 +1742,28 @@ def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
             displaced_entries: list[dict[str, object]] | None = None
             try:
                 require_directory_identity_at(
-                    parent_fd, live.name, candidate_identity, "post-publication verification"
+                    parent_fd,
+                    live.name,
+                    candidate_identity,
+                    "post-publication verification",
                 )
                 require_directory_identity_at(
-                    parent_fd, candidate.name, live_identity, "post-publication verification"
+                    parent_fd,
+                    candidate.name,
+                    live_identity,
+                    "post-publication verification",
                 )
                 live_fd = open_expected_directory(
-                    parent_fd, live.name, candidate_identity, "published tree verification"
+                    parent_fd,
+                    live.name,
+                    candidate_identity,
+                    "published tree verification",
                 )
                 candidate_fd = open_expected_directory(
-                    parent_fd, candidate.name, live_identity, "displaced tree verification"
+                    parent_fd,
+                    candidate.name,
+                    live_identity,
+                    "displaced tree verification",
                 )
                 try:
                     published_entries = snapshot_entries_fd(live_fd, live)
@@ -1685,16 +1774,29 @@ def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
                 if not equal_after_directory_exchange(
                     displaced_entries, expected.get("entries", [])
                 ):
-                    raise MigrationError("displaced live tree differs from the precommit snapshot")
-                if not equal_after_directory_exchange(published_entries, canonical_entries):
-                    raise MigrationError("published tree differs from the validated candidate")
+                    raise MigrationError(
+                        "displaced live tree differs from the precommit snapshot"
+                    )
+                if not equal_after_directory_exchange(
+                    published_entries, canonical_entries
+                ):
+                    raise MigrationError(
+                        "published tree differs from the validated candidate"
+                    )
                 visible_parent = lstat_optional(live.parent)
                 if visible_parent is None or (
                     visible_parent.st_dev,
                     visible_parent.st_ino,
                 ) != (opened_parent.st_dev, opened_parent.st_ino):
-                    raise MigrationError("publication parent changed after pinned publication")
-            except (MigrationError, OSError, UnicodeError, ValueError) as publication_error:
+                    raise MigrationError(
+                        "publication parent changed after pinned publication"
+                    )
+            except (
+                MigrationError,
+                OSError,
+                UnicodeError,
+                ValueError,
+            ) as publication_error:
                 rollback_barrier()
                 if (
                     directory_identity_at(parent_fd, live.name) != candidate_identity
@@ -1719,13 +1821,22 @@ def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
                 try:
                     post_rollback_barrier()
                     require_directory_identity_at(
-                        parent_fd, live.name, live_identity, "post-rollback verification"
+                        parent_fd,
+                        live.name,
+                        live_identity,
+                        "post-rollback verification",
                     )
                     require_directory_identity_at(
-                        parent_fd, candidate.name, candidate_identity, "post-rollback verification"
+                        parent_fd,
+                        candidate.name,
+                        candidate_identity,
+                        "post-rollback verification",
                     )
                     rollback_live_fd = open_expected_directory(
-                        parent_fd, live.name, live_identity, "post-rollback live verification"
+                        parent_fd,
+                        live.name,
+                        live_identity,
+                        "post-rollback live verification",
                     )
                     rollback_candidate_fd = open_expected_directory(
                         parent_fd,
@@ -1735,16 +1846,29 @@ def atomic_publish(live: Path, candidate: Path, snapshot: Path) -> None:
                     )
                     try:
                         rollback_live = snapshot_entries_fd(rollback_live_fd, live)
-                        rollback_candidate = snapshot_entries_fd(rollback_candidate_fd, candidate)
+                        rollback_candidate = snapshot_entries_fd(
+                            rollback_candidate_fd, candidate
+                        )
                     finally:
                         os.close(rollback_candidate_fd)
                         os.close(rollback_live_fd)
-                    if not equal_after_directory_exchange(rollback_candidate, canonical_entries) or (
+                    if not equal_after_directory_exchange(
+                        rollback_candidate, canonical_entries
+                    ) or (
                         displaced_entries is not None
-                        and not equal_after_directory_exchange(rollback_live, displaced_entries)
+                        and not equal_after_directory_exchange(
+                            rollback_live, displaced_entries
+                        )
                     ):
-                        raise MigrationError("the pinned rollback had an uncertain content postcondition")
-                except (MigrationError, OSError, UnicodeError, ValueError) as post_rollback_error:
+                        raise MigrationError(
+                            "the pinned rollback had an uncertain content postcondition"
+                        )
+                except (
+                    MigrationError,
+                    OSError,
+                    UnicodeError,
+                    ValueError,
+                ) as post_rollback_error:
                     raise MigrationError(
                         "atomic publication rollback completed but its postcondition changed; "
                         f"original live retained at {retained_directory_path(live_owner_fd, str(live))}; "
@@ -1783,7 +1907,13 @@ def main(arguments: list[str]) -> int:
         return 0
     if command == "needs-migration" and len(arguments) == 2:
         state = inspect_namespace(root)
-        return 0 if state["legacy_user"] or state["legacy_state"] or has_legacy_nix_path(root) else 1
+        return (
+            0
+            if state["legacy_user"]
+            or state["legacy_state"]
+            or has_legacy_nix_path(root)
+            else 1
+        )
     if command == "migrate-stage" and len(arguments) == 2:
         migrate_stage(root)
         return 0
@@ -1794,10 +1924,18 @@ def main(arguments: list[str]) -> int:
         write_snapshot(root, Path(arguments[2]))
         return 0
     if command == "precommit" and len(arguments) == 4:
-        verify_precommit(root, Path(os.path.abspath(arguments[2])), Path(os.path.abspath(arguments[3])))
+        verify_precommit(
+            root,
+            Path(os.path.abspath(arguments[2])),
+            Path(os.path.abspath(arguments[3])),
+        )
         return 0
     if command == "publish" and len(arguments) == 4:
-        atomic_publish(root, Path(os.path.abspath(arguments[2])), Path(os.path.abspath(arguments[3])))
+        atomic_publish(
+            root,
+            Path(os.path.abspath(arguments[2])),
+            Path(os.path.abspath(arguments[3])),
+        )
         return 0
     raise MigrationError(f"invalid helper invocation: {' '.join(arguments)}")
 

@@ -1,0 +1,10 @@
+target-version = "py310"
+line-length = 88
+
+[lint]
+extend-select = ["I", "UP", "B", "SIM", "EXE", "PLW1510"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

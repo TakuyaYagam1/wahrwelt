@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import contextlib
 import ctypes
 import errno
 import os
@@ -6,7 +6,6 @@ import re
 import secrets
 import stat
 import sys
-
 
 RENAME_NOREPLACE = 1
 LIBC = ctypes.CDLL(None, use_errno=True)
@@ -19,7 +18,9 @@ def fail(message: str, code: int = 1) -> None:
 
 def collision(old: str, new: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
-    fail(f"Wahrwelt migration conflict: namespace ownership changed for {old} -> {new}{suffix}")
+    fail(
+        f"Wahrwelt migration conflict: namespace ownership changed for {old} -> {new}{suffix}"
+    )
 
 
 def inode_id(info: os.stat_result) -> tuple[int, int]:
@@ -58,7 +59,11 @@ def split_paths(old: str, new: str) -> tuple[str, str, str]:
         collision(old, new, "paths do not share one parent")
     old_name = os.path.basename(old)
     new_name = os.path.basename(new)
-    if old_name in ("", ".", "..") or new_name in ("", ".", "..") or old_name == new_name:
+    if (
+        old_name in ("", ".", "..")
+        or new_name in ("", ".", "..")
+        or old_name == new_name
+    ):
         collision(old, new, "invalid namespace names")
     return parent, old_name, new_name
 
@@ -98,7 +103,9 @@ def pin_nearest_existing_ancestor(
     if "|" in ancestor or any("|" in component for component in missing):
         collision(old, new, "namespace path cannot contain token delimiters")
     try:
-        fd = os.open(ancestor, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        fd = os.open(
+            ancestor, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        )
     except OSError:
         collision(old, new, "nearest existing ancestor is not an ordinary directory")
     info = os.fstat(fd)
@@ -133,10 +140,8 @@ def open_optional_directory_beneath(
             current = following
         return current
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.close(current)
-        except OSError:
-            pass
         raise
 
 
@@ -170,7 +175,9 @@ def verify_absent_parent(
     except OSError:
         collision(old, new, "anchored ancestor changed after preflight")
     try:
-        if inode_id(os.fstat(ancestor_fd)) != expected_ancestor or not visible_parent_matches(
+        if inode_id(
+            os.fstat(ancestor_fd)
+        ) != expected_ancestor or not visible_parent_matches(
             ancestor, expected_ancestor
         ):
             collision(old, new, "anchored ancestor changed after preflight")
@@ -183,7 +190,9 @@ def verify_absent_parent(
             return
         try:
             if lstat_at(parent_fd, old_name) is not None:
-                collision(old, new, "legacy namespace appeared after absent-parent preflight")
+                collision(
+                    old, new, "legacy namespace appeared after absent-parent preflight"
+                )
         finally:
             os.close(parent_fd)
         if not visible_parent_matches(ancestor, expected_ancestor):
@@ -351,7 +360,11 @@ def move(old: str, new: str, token: str) -> None:
                 collision(old, new, "parent changed after preflight")
             return
         target = lstat_at(parent_fd, new_name)
-        if source is None or not stat.S_ISDIR(source.st_mode) or inode_id(source) != expected_source:
+        if (
+            source is None
+            or not stat.S_ISDIR(source.st_mode)
+            or inode_id(source) != expected_source
+        ):
             collision(old, new, "source changed after preflight")
         if target is not None:
             collision(old, new, "canonical namespace appeared after preflight")
@@ -374,7 +387,10 @@ def move(old: str, new: str, token: str) -> None:
         if visible_parent_matches(parent, expected_parent):
             try:
                 visible_target = os.lstat(new)
-                visible_ok = stat.S_ISDIR(visible_target.st_mode) and inode_id(visible_target) == expected_source
+                visible_ok = (
+                    stat.S_ISDIR(visible_target.st_mode)
+                    and inode_id(visible_target) == expected_source
+                )
             except OSError:
                 pass
         if anchored_ok and visible_ok:
@@ -395,8 +411,16 @@ def move(old: str, new: str, token: str) -> None:
                 pass
         if restored:
             if moved_id == expected_source:
-                collision(old, new, "commit parent changed; move rolled back through pinned parent")
-            collision(old, new, "source changed during commit; concurrent replacement restored")
+                collision(
+                    old,
+                    new,
+                    "commit parent changed; move rolled back through pinned parent",
+                )
+            collision(
+                old,
+                new,
+                "source changed during commit; concurrent replacement restored",
+            )
         try:
             pinned_parent = os.readlink(f"/proc/self/fd/{parent_fd}")
         except OSError:
@@ -455,7 +479,9 @@ def verify_no_legacy_markers(root: str, excluded_roots: list[str]) -> None:
     except OSError:
         fail(f"Wahrwelt migration conflict: marker root is unavailable: {root}")
     if not stat.S_ISDIR(root_info.st_mode):
-        fail(f"Wahrwelt migration conflict: marker root is not an ordinary directory: {root}")
+        fail(
+            f"Wahrwelt migration conflict: marker root is not an ordinary directory: {root}"
+        )
     for current, directories, files in os.walk(root, followlinks=False):
         for name in directories + files:
             if name != ".mysetup-managed.json":

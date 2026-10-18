@@ -9,6 +9,5 @@ _:
     ../programs/gaming.nix
     ../programs/xdg-portal.nix
     ../system/fonts.nix
-    ../programs/zen-browser.nix
   ];
 }

@@ -12,6 +12,7 @@ on:
       - ".gitignore"
       - ".github/dependabot.yml"
       - ".github/workflows/**"
+      - "ruff.toml"
 
 jobs:
   linting:
@@ -117,7 +118,7 @@ jobs:
       - name: Run linting
         env:
           CI_PROFILE_BIN: ${{ steps.tools.outputs.profile_bin }}
-        run: PATH="$CI_PROFILE_BIN:$PATH" make -C Linux lint
+        run: PATH="$CI_PROFILE_BIN:$PATH" make -C Linux lint fmt-check-python
 
       - name: Run Go tests
         env:

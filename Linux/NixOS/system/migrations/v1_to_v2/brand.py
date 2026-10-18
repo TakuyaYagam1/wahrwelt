@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -521,10 +522,8 @@ def open_external_parent(target: Path, create: bool) -> int | None:
         except FileNotFoundError:
             if not create:
                 return None
-            try:
+            with contextlib.suppress(FileExistsError):
                 os.mkdir(parent.name, 0o700, dir_fd=grand_fd)
-            except FileExistsError:
-                pass
             parent_info = os.stat(parent.name, dir_fd=grand_fd, follow_symlinks=False)
         if not stat.S_ISDIR(parent_info.st_mode):
             raise MigrationError(
@@ -639,10 +638,8 @@ def publish_external_hash(target: Path, password_hash: str) -> None:
             pass
     finally:
         os.close(fd)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary, dir_fd=parent_fd)
-        except FileNotFoundError:
-            pass
         os.fsync(parent_fd)
         os.close(parent_fd)
     published = read_external_hash(target)
@@ -766,7 +763,9 @@ def require_lock_source(
     expected_ref: str | None,
 ) -> dict[str, object]:
     if type(node) is not dict:
-        raise MigrationError("ownership collision: generated lock node must be an object")
+        raise MigrationError(
+            "ownership collision: generated lock node must be an object"
+        )
     if set(node) - {"inputs", "locked", "original"}:
         raise MigrationError(
             "ownership collision: generated lock node contains unknown fields"
@@ -841,9 +840,7 @@ def migrated_lock_payload(path: Path, source: str) -> str:
         raise MigrationError("ownership collision: v1 and v2 lock entries coexist")
 
     expected_dir, expected_ref = wrapper_lock_source(source, "MySetup")
-    node = require_lock_source(
-        nodes["mysetup"], "MySetup", expected_dir, expected_ref
-    )
+    node = require_lock_source(nodes["mysetup"], "MySetup", expected_dir, expected_ref)
     locked = node["locked"]
     original = node["original"]
     assert type(locked) is dict and type(original) is dict
@@ -863,9 +860,7 @@ def validate_lock(path: Path, source: str) -> None:
     if inputs.get("wahrwelt") != "wahrwelt" or "wahrwelt" not in nodes:
         raise MigrationError("v1_to_v2 left an incomplete v2 lock entry")
     expected_dir, expected_ref = wrapper_lock_source(source, "wahrwelt")
-    require_lock_source(
-        nodes["wahrwelt"], "wahrwelt", expected_dir, expected_ref
-    )
+    require_lock_source(nodes["wahrwelt"], "wahrwelt", expected_dir, expected_ref)
 
 
 def migrate(root: Path, raw_target: str | None = None) -> None:

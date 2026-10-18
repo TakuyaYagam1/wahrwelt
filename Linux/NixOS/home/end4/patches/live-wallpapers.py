@@ -1,15 +1,13 @@
-#!/usr/bin/env python3
 """Patch both End4 QuickShell trees with the shared live wallpaper contract."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
+from pathlib import Path
 
 
 def fail(message: str) -> None:
@@ -59,7 +57,11 @@ def transform_switchwall(text: str, label: str) -> str:
         )
         if assignment is None:
             fail(f"{label}: MPVPAPER_FLAGS must be a quoted literal")
-        value = assignment.group(1) if assignment.group(1) is not None else assignment.group(2)
+        value = (
+            assignment.group(1)
+            if assignment.group(1) is not None
+            else assignment.group(2)
+        )
         if value != "-p -a max":
             fail(f"{label}: unsupported MPVPAPER_FLAGS value {value!r}")
 
@@ -68,8 +70,12 @@ def transform_switchwall(text: str, label: str) -> str:
     if flag_name_count != expected_flag_names:
         fail(f"{label}: MPVPAPER_FLAGS references are missing or ambiguous")
 
-    create_start, create_end, create_body = shell_function_body(text, "create_restore_script", label)
-    remove_start, remove_end, remove_body = shell_function_body(text, "remove_restore", label)
+    create_start, create_end, create_body = shell_function_body(
+        text, "create_restore_script", label
+    )
+    remove_start, remove_end, remove_body = shell_function_body(
+        text, "remove_restore", label
+    )
     if not (create_end <= remove_start or remove_end <= create_start):
         fail(f"{label}: restore function ranges overlap")
 
@@ -95,12 +101,12 @@ def transform_switchwall(text: str, label: str) -> str:
     socket_cleanup_matches = list(socket_cleanup_pattern.finditer(text))
 
     call_pattern = re.compile(
-        r'(?m)^(?P<indent>[ \t]*)mpvpaper[ \t]+'
-        r'(?P<flags>\$MPVPAPER_FLAGS[ \t]+)?-o[ \t]+'
+        r"(?m)^(?P<indent>[ \t]*)mpvpaper[ \t]+"
+        r"(?P<flags>\$MPVPAPER_FLAGS[ \t]+)?-o[ \t]+"
         r'(?P<video_opts>"\$VIDEO_OPTS'
         r'(?P<ipc> input-ipc-server=\$MPV_SOCKET_PREFIX(?P<socket_monitor_escape>\\?)\$monitor\.sock)?")'
         r'[ \t]+"(?P<monitor>\\?\$monitor)"[ \t]+"\$video_path"'
-        r'[ \t]*&[ \t]*(?:\#[^\r\n]*)?[ \t]*$'
+        r"[ \t]*&[ \t]*(?:\#[^\r\n]*)?[ \t]*$"
     )
     restore_calls = list(call_pattern.finditer(heredoc))
     if len(restore_calls) != 1 or restore_calls[0].group("monitor") != r"\$monitor":
@@ -108,7 +114,9 @@ def transform_switchwall(text: str, label: str) -> str:
 
     all_calls = list(re.finditer(r"(?m)^[ \t]*mpvpaper[ \t]+[^\r\n]*(?:\r?\n|$)", text))
     if len(all_calls) != 2:
-        fail(f"{label}: expected one runtime and one restore playback command, found {len(all_calls)}")
+        fail(
+            f"{label}: expected one runtime and one restore playback command, found {len(all_calls)}"
+        )
     runtime_calls = [
         match for match in all_calls if not (create_start <= match.start() < create_end)
     ]
@@ -137,17 +145,25 @@ def transform_switchwall(text: str, label: str) -> str:
             or len(socket_prefix_lines) != 1
             or socket_prefix_lines[0].strip() != socket_prefix_line
         ):
-            fail(f"{label}: IPC socket directory declarations are missing or unsupported")
+            fail(
+                f"{label}: IPC socket directory declarations are missing or unsupported"
+            )
         restore_cleanup_matches = list(socket_cleanup_pattern.finditer(heredoc))
         outside_create_cleanups = [
             match
             for match in socket_cleanup_matches
             if not (create_start <= match.start() < create_end)
         ]
-        if len(socket_cleanup_matches) != 2 or len(restore_cleanup_matches) != 1 or len(outside_create_cleanups) != 1:
+        if (
+            len(socket_cleanup_matches) != 2
+            or len(restore_cleanup_matches) != 1
+            or len(outside_create_cleanups) != 1
+        ):
             fail(f"{label}: IPC socket cleanup is missing or ambiguous")
     elif socket_dir_lines or socket_prefix_lines or socket_cleanup_matches:
-        fail(f"{label}: IPC socket configuration is present without IPC playback commands")
+        fail(
+            f"{label}: IPC socket configuration is present without IPC playback commands"
+        )
 
     if bool(runtime_match.group("flags")) != has_flags:
         fail(f"{label}: runtime MPVPAPER_FLAGS use does not match its declaration")
@@ -166,9 +182,13 @@ def transform_switchwall(text: str, label: str) -> str:
     quoted_path = (
         f'{indent}local video_path="$1"{newline}'
         f"{indent}local escaped_video_path{newline}"
-        f'{indent}printf -v escaped_video_path \'%q\' "$video_path"{newline}'
+        f"{indent}printf -v escaped_video_path '%q' \"$video_path\"{newline}"
     )
-    create_body = create_body[: local_match.start()] + quoted_path + create_body[local_match.end() :]
+    create_body = (
+        create_body[: local_match.start()]
+        + quoted_path
+        + create_body[local_match.end() :]
+    )
 
     restore_line = restore_calls[0].group(0)
     restore_line_match = re.search(r"(?m)^[ \t]*mpvpaper[ \t]+[^\r\n]*", create_body)
@@ -178,7 +198,7 @@ def transform_switchwall(text: str, label: str) -> str:
     flags = "$MPVPAPER_FLAGS " if has_flags else ""
     video_opts = restore_calls[0].group("video_opts")
     restore_replacement = (
-        f"{restore_indent}mpvpaper {flags}-o {video_opts} \"\\$monitor\" "
+        f'{restore_indent}mpvpaper {flags}-o {video_opts} "\\$monitor" '
         "$escaped_video_path &"
     )
     create_body = (
@@ -204,10 +224,17 @@ def transform_switchwall(text: str, label: str) -> str:
     if len(restore_shell_lines) > 1:
         fail(f"{label}: RESTORE_SHELL declaration is ambiguous")
     if restore_shell_lines:
-        if re.fullmatch(r'[ \t]*RESTORE_SHELL="\$\{BASH:-bash\}"[ \t]*', restore_shell_lines[0]) is None:
+        if (
+            re.fullmatch(
+                r'[ \t]*RESTORE_SHELL="\$\{BASH:-bash\}"[ \t]*', restore_shell_lines[0]
+            )
+            is None
+        ):
             fail(f"{label}: unsupported RESTORE_SHELL declaration")
     else:
-        restore_script_lines = list(re.finditer(r"(?m)^[ \t]*RESTORE_SCRIPT=[^\r\n]*(?:\r?\n|$)", text))
+        restore_script_lines = list(
+            re.finditer(r"(?m)^[ \t]*RESTORE_SCRIPT=[^\r\n]*(?:\r?\n|$)", text)
+        )
         if len(restore_script_lines) != 1:
             fail(f"{label}: RESTORE_SCRIPT declaration is missing or ambiguous")
         anchor = restore_script_lines[0]
@@ -305,14 +332,22 @@ def apply_anchor_patch(root: Path, patch_file: Path, marker: str) -> None:
         text=True,
     )
     if result.returncode != 0:
-        fail(f"strict upstream anchor patch rejected: {result.stderr.strip() or result.stdout.strip()}")
-    marker_path = root / ("ii/modules/ii/background/Background.qml" if (root / "ii").is_dir() else "modules/ii/background/Background.qml")
+        fail(
+            f"strict upstream anchor patch rejected: {result.stderr.strip() or result.stdout.strip()}"
+        )
+    marker_path = root / (
+        "ii/modules/ii/background/Background.qml"
+        if (root / "ii").is_dir()
+        else "modules/ii/background/Background.qml"
+    )
     text = marker_path.read_text()
     require_count(text, marker, 1, f"{marker_path} anchor marker")
 
 
 def install_runtime_helpers(root: Path) -> None:
-    scripts = root / ("ii/scripts/wallpapers" if (root / "ii").is_dir() else "scripts/wallpapers")
+    scripts = root / (
+        "ii/scripts/wallpapers" if (root / "ii").is_dir() else "scripts/wallpapers"
+    )
     scripts.mkdir(parents=True, exist_ok=True)
     source_dir = Path(__file__).resolve().parent
     for name in (
@@ -344,13 +379,13 @@ def patch_gemini_categorizer(root: Path) -> None:
         return
     path = root / "ii/scripts/ai/gemini-categorize-wallpaper.sh"
     text = path.read_text()
-    old = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
+    old = """RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
 
 # Resize image for speed
 mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
 magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
-'''
-    new = '''WORK_DIR="${XDG_RUNTIME_DIR:-/tmp}/quickshell/ai"
+"""
+    new = """WORK_DIR="${XDG_RUNTIME_DIR:-/tmp}/quickshell/ai"
 mkdir -p "$WORK_DIR"
 RESIZED_IMG_PATH="$(mktemp "$WORK_DIR/wallpaper.XXXXXX.jpg")"
 SOURCE_FRAME_PATH=""
@@ -379,8 +414,10 @@ if ! magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"; the
     echo "Failed to resize wallpaper: $SOURCE_IMG_PATH" >&2
     exit 1
 fi
-'''
-    path.write_text(replace_once(text, old, new, f"video-safe AI categorizer in {path}"))
+"""
+    path.write_text(
+        replace_once(text, old, new, f"video-safe AI categorizer in {path}")
+    )
 
 
 SERVICE_SHA256 = {
@@ -394,7 +431,11 @@ SERVICE_SHA256 = {
 
 
 def patch_service(root: Path, variant: str) -> None:
-    path = root / ("ii/services/Wallpapers.qml" if (root / "ii").is_dir() else "services/Wallpapers.qml")
+    path = root / (
+        "ii/services/Wallpapers.qml"
+        if (root / "ii").is_dir()
+        else "services/Wallpapers.qml"
+    )
     text = path.read_text()
     expected_hashes = SERVICE_SHA256[variant]
     actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -414,7 +455,11 @@ def patch_service(root: Path, variant: str) -> None:
 
 
 def patch_selector(root: Path) -> None:
-    path = root / ("ii/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml" if (root / "ii").is_dir() else "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml")
+    path = root / (
+        "ii/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
+        if (root / "ii").is_dir()
+        else "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
+    )
     text = path.read_text()
     filter_bar = """
                 RowLayout {
@@ -459,7 +504,12 @@ def patch_selector(root: Path) -> None:
             f"found AddressBar={address_bar_count}, topBar={top_bar_count}"
         )
     if (root / "ii").is_dir():
-        text = replace_once(text, "                        model: Wallpapers.folderModel", "                        model: Wallpapers.wallpaperModel", f"official wallpaper model in {path}")
+        text = replace_once(
+            text,
+            "                        model: Wallpapers.folderModel",
+            "                        model: Wallpapers.wallpaperModel",
+            f"official wallpaper model in {path}",
+        )
     pc_generation = "        Wallpapers.setDirectory(`${Directories.pictures}/Wallpapers`);\n        Qt.callLater(() => Wallpapers.generateThumbnail(thumbnailSizeName));"
     official_generation = "        Wallpapers.generateThumbnail(thumbnailSizeName);"
     if text.count(pc_generation) == 1 and text.count(official_generation) == 0:
@@ -513,7 +563,11 @@ def patch_selector(root: Path) -> None:
 
 
 def patch_directory_item(root: Path) -> None:
-    path = root / ("ii/modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml" if (root / "ii").is_dir() else "modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml")
+    path = root / (
+        "ii/modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml"
+        if (root / "ii").is_dir()
+        else "modules/ii/wallpaperSelector/WallpaperDirectoryItem.qml"
+    )
     text = path.read_text()
     property_match = re.compile(r"(?m)^(\s*)property bool useThumbnail: [^\n]+$")
     text, count = property_match.subn(
@@ -529,13 +583,21 @@ def patch_directory_item(root: Path) -> None:
 
 
 def patch_background(root: Path) -> None:
-    relative = "ii/modules/ii/background/Background.qml" if (root / "ii").is_dir() else "modules/ii/background/Background.qml"
+    relative = (
+        "ii/modules/ii/background/Background.qml"
+        if (root / "ii").is_dir()
+        else "modules/ii/background/Background.qml"
+    )
     path = root / relative
     text = path.read_text()
     property_block = re.compile(
         r"(?m)^(\s*)property bool wallpaperIsVideo: [^\n]+\n\s*property string wallpaperPath: [^\n]+\n"
     )
-    source = "bgRoot.effectiveWallpaperPath" if "property string effectiveWallpaperPath:" in text else "Config.options.background.wallpaperPath"
+    source = (
+        "bgRoot.effectiveWallpaperPath"
+        if "property string effectiveWallpaperPath:" in text
+        else "Config.options.background.wallpaperPath"
+    )
     replacement = (
         "\\1property string wallpaperSourcePath: " + source + "\n"
         "\\1property bool wallpaperIsVideo: Wallpapers.isVideoPath(wallpaperSourcePath)\n"
@@ -547,10 +609,14 @@ def patch_background(root: Path) -> None:
     if count != 1:
         fail(f"wallpaper source properties missing or ambiguous in {path}")
 
-    item_anchor = re.compile(r"(?m)^(?P<indent>[ \t]*)Item \{\n(?P=indent)    anchors\.fill: parent\n")
+    item_anchor = re.compile(
+        r"(?m)^(?P<indent>[ \t]*)Item \{\n(?P=indent)    anchors\.fill: parent\n"
+    )
     matches = list(item_anchor.finditer(text))
     if len(matches) != 1:
-        fail(f"live renderer insertion in {path}: expected one wallpaper item anchor, found {len(matches)}")
+        fail(
+            f"live renderer insertion in {path}: expected one wallpaper item anchor, found {len(matches)}"
+        )
     match = matches[0]
     indent = match.group("indent")
     live_surface = (
@@ -566,8 +632,12 @@ def patch_background(root: Path) -> None:
     )
     text = text[: match.start()] + live_surface + text[match.start() :]
 
-    wallpaper_block = re.compile(r"(?m)^(\s+id: wallpaper\b[\s\S]*?^\s+visible:)([^\n]*)")
-    text, count = wallpaper_block.subn(r"\1\2 && !bgRoot.wallpaperIsLive", text, count=1)
+    wallpaper_block = re.compile(
+        r"(?m)^(\s+id: wallpaper\b[\s\S]*?^\s+visible:)([^\n]*)"
+    )
+    text, count = wallpaper_block.subn(
+        r"\1\2 && !bgRoot.wallpaperIsLive", text, count=1
+    )
     if count != 1:
         fail(f"wallpaper image visibility anchor missing or ambiguous in {path}")
 
@@ -648,17 +718,25 @@ def patch_background(root: Path) -> None:
                 count=1,
             )
         elif legacy_count != 0 or compatible_count != 1:
-            fail(f"previous wallpaper video reveal anchor missing or ambiguous in {path}")
+            fail(
+                f"previous wallpaper video reveal anchor missing or ambiguous in {path}"
+            )
     path.write_text(text)
 
 
 def patch_lock_dispatch(root: Path, variant: str) -> None:
-    path = root / ("ii/modules/common/panels/lock/LockScreen.qml" if (root / "ii").is_dir() else "modules/common/panels/lock/LockScreen.qml")
+    path = root / (
+        "ii/modules/common/panels/lock/LockScreen.qml"
+        if (root / "ii").is_dir()
+        else "modules/common/panels/lock/LockScreen.qml"
+    )
     text = path.read_text()
     function_pattern = re.compile(r"(?m)^(?P<indent>[ \t]*)function lock\(\) \{")
     matches = list(function_pattern.finditer(text))
     if len(matches) != 1:
-        fail(f"native QuickShell lock dispatcher in {path}: expected one lock function, found {len(matches)}")
+        fail(
+            f"native QuickShell lock dispatcher in {path}: expected one lock function, found {len(matches)}"
+        )
     match = matches[0]
     brace = text.find("{", match.start(), match.end())
     depth = 0
@@ -674,7 +752,9 @@ def patch_lock_dispatch(root: Path, variant: str) -> None:
                     end += 1
                 break
     if end < 0:
-        fail(f"native QuickShell lock dispatcher in {path}: lock function closing brace missing")
+        fail(
+            f"native QuickShell lock dispatcher in {path}: lock function closing brace missing"
+        )
     indent = match.group("indent")
     replacement = (
         f"{indent}function lock() {{\n"
@@ -687,7 +767,11 @@ def patch_lock_dispatch(root: Path, variant: str) -> None:
 
 
 def patch_session_lock(root: Path, variant: str) -> None:
-    path = root / ("ii/modules/common/functions/Session.qml" if (root / "ii").is_dir() else "modules/common/functions/Session.qml")
+    path = root / (
+        "ii/modules/common/functions/Session.qml"
+        if (root / "ii").is_dir()
+        else "modules/common/functions/Session.qml"
+    )
     text = path.read_text()
     if variant == "pc":
         old = """    function lock() {
@@ -721,16 +805,24 @@ def patch_lock_setting(root: Path, variant: str) -> None:
     button_pattern = re.compile(r'(?m)^(?P<indent>[ \t]*)buttonIcon: "water_drop"\s*$')
     button_matches = list(button_pattern.finditer(text))
     if len(button_matches) != 1:
-        fail(f"native QuickShell lock setting in {path}: expected one lock switch, found {len(button_matches)}")
+        fail(
+            f"native QuickShell lock setting in {path}: expected one lock switch, found {len(button_matches)}"
+        )
     button_match = button_matches[0]
     switch_pattern = re.compile(r"(?m)^(?P<indent>[ \t]*)ConfigSwitch \{")
-    switch_matches = [match for match in switch_pattern.finditer(text) if match.start() < button_match.start()]
+    switch_matches = [
+        match
+        for match in switch_pattern.finditer(text)
+        if match.start() < button_match.start()
+    ]
     if not switch_matches:
         fail(f"native QuickShell lock setting in {path}: ConfigSwitch anchor missing")
     match = switch_matches[-1]
     indent = match.group("indent")
     if button_match.group("indent") != f"{indent}    ":
-        fail(f"native QuickShell lock setting in {path}: lock switch indentation drifted")
+        fail(
+            f"native QuickShell lock setting in {path}: lock switch indentation drifted"
+        )
     brace = text.find("{", match.start(), match.end())
     depth = 0
     end = -1
@@ -746,18 +838,22 @@ def patch_lock_setting(root: Path, variant: str) -> None:
                 break
     if end < 0:
         fail(f"native QuickShell lock setting in {path}: switch closing brace missing")
-    replacement = f'''{indent}ConfigSwitch {{
+    replacement = f"""{indent}ConfigSwitch {{
 {indent}    buttonIcon: "water_drop"
 {indent}    text: Translation.tr("Use QuickShell lock screen (fixed)")
 {indent}    checked: true
 {indent}    enabled: false
 {indent}}}
-'''
+"""
     path.write_text(text[: match.start()] + replacement + text[end:])
 
 
 def patch_waffle_lock(root: Path) -> None:
-    path = root / ("ii/modules/waffle/lock/WaffleLock.qml" if (root / "ii").is_dir() else "modules/waffle/lock/WaffleLock.qml")
+    path = root / (
+        "ii/modules/waffle/lock/WaffleLock.qml"
+        if (root / "ii").is_dir()
+        else "modules/waffle/lock/WaffleLock.qml"
+    )
     if not path.is_file():
         return
     text = path.read_text()
@@ -880,7 +976,9 @@ def patch_official_lock_surface(root: Path) -> None:
             f"official secure lock wallpaper surface in {path}",
         )
     elif text.count("id: lockWallpaperSurface") != 1:
-        fail(f"official secure lock wallpaper surface in {path}: renderer anchor is ambiguous")
+        fail(
+            f"official secure lock wallpaper surface in {path}: renderer anchor is ambiguous"
+        )
     path.write_text(text)
 
 
@@ -893,15 +991,17 @@ def patch_pc_lock_surface(root: Path) -> None:
         "import qs.modules.common.panels.lock\nimport qs.modules.ii.background\n",
         f"live wallpaper import in {path}",
     )
-    original_loader = "    Loader {\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n"
-    patched_loader = "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === \"niri\"\n"
+    original_loader = '    Loader {\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === "niri"\n'
+    patched_loader = '    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: WM.compositor === "niri"\n'
     active_loader = "    Loader {\n        id: lockBackgroundLoader\n        anchors.fill: parent\n        z: -1\n        active: true\n"
     if text.count(original_loader) == 1:
         text = text.replace(original_loader, active_loader, 1)
     elif text.count(patched_loader) == 1:
         text = text.replace(patched_loader, active_loader, 1)
     elif text.count(active_loader) != 1:
-        fail(f"native pC lock wallpaper surface activation in {path}: loader anchor missing or ambiguous")
+        fail(
+            f"native pC lock wallpaper surface activation in {path}: loader anchor missing or ambiguous"
+        )
     old = """        sourceComponent: Item {
             anchors.fill: parent
 
@@ -955,7 +1055,9 @@ def patch_pc_lock_surface(root: Path) -> None:
     if text.count(old) == 1:
         text = text.replace(old, new, 1)
     elif text.count(new) != 1:
-        fail(f"pC lock live wallpaper in {path}: background source anchor missing or ambiguous")
+        fail(
+            f"pC lock live wallpaper in {path}: background source anchor missing or ambiguous"
+        )
     path.write_text(text)
 
 
@@ -991,7 +1093,9 @@ def patch_image_consumers(root: Path, variant: str) -> None:
             f"pC settings wallpaper preview fallback in {quick_config_path}",
         )
         quick_config_path.write_text(quick_config_text)
-        selector_path = tree / "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
+        selector_path = (
+            tree / "modules/ii/wallpaperSelector/WallpaperSelectorContent.qml"
+        )
         selector_text = selector_path.read_text()
         selector_start, selector_end = qml_property_block(
             selector_text,
@@ -1006,7 +1110,9 @@ def patch_image_consumers(root: Path, variant: str) -> None:
             f"pC selector blur fallback in {selector_path}",
         )
         selector_path.write_text(
-            selector_text[:selector_start] + selector_block + selector_text[selector_end:]
+            selector_text[:selector_start]
+            + selector_block
+            + selector_text[selector_end:]
         )
         replace(
             "modules/ii/background/NiriBackdrop.qml",
@@ -1027,7 +1133,9 @@ def patch_image_consumers(root: Path, variant: str) -> None:
                 f"pC sidebar banner fallback in {sidebar_path}",
             )
         )
-        usercard_path = tree / "modules/ii/background/widgets/usercard/UserCardWidget.qml"
+        usercard_path = (
+            tree / "modules/ii/background/widgets/usercard/UserCardWidget.qml"
+        )
         usercard_text = usercard_path.read_text()
         usercard_sources = (
             (
@@ -1040,7 +1148,9 @@ def patch_image_consumers(root: Path, variant: str) -> None:
             ),
         )
         usercard_matches = [
-            replacement for replacement in usercard_sources if usercard_text.count(replacement[0]) == 1
+            replacement
+            for replacement in usercard_sources
+            if usercard_text.count(replacement[0]) == 1
         ]
         if len(usercard_matches) != 1:
             fail(
@@ -1098,7 +1208,7 @@ def patch_image_consumers(root: Path, variant: str) -> None:
     )
     waffle_text = replace_once(
         waffle_text,
-        "        color: \"transparent\"\n\n        StyledImage {\n            anchors.fill: parent\n            source: Config.options.background.wallpaperPath\n            fillMode: Image.PreserveAspectCrop\n        }",
+        '        color: "transparent"\n\n        StyledImage {\n            anchors.fill: parent\n            source: Config.options.background.wallpaperPath\n            fillMode: Image.PreserveAspectCrop\n        }',
         """        color: \"transparent\"
         property string wallpaperPath: Config.options.background.wallpaperPath
 
@@ -1122,12 +1232,21 @@ def patch_image_consumers(root: Path, variant: str) -> None:
 
 
 def patch_appearance(root: Path) -> None:
-    path = root / ("ii/modules/common/Appearance.qml" if (root / "ii").is_dir() else "modules/common/Appearance.qml")
+    path = root / (
+        "ii/modules/common/Appearance.qml"
+        if (root / "ii").is_dir()
+        else "modules/common/Appearance.qml"
+    )
     text = path.read_text()
-    text = replace_once(text, "import qs.modules.common.functions\n", "import qs.modules.common.functions\nimport qs.services\n", f"wallpaper service import in {path}")
     text = replace_once(
         text,
-        "        property bool wallpaperIsVideo: wallpaperPath.endsWith(\".mp4\") || wallpaperPath.endsWith(\".webm\") || wallpaperPath.endsWith(\".mkv\") || wallpaperPath.endsWith(\".avi\") || wallpaperPath.endsWith(\".mov\")\n        source: Qt.resolvedUrl(wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath)",
+        "import qs.modules.common.functions\n",
+        "import qs.modules.common.functions\nimport qs.services\n",
+        f"wallpaper service import in {path}",
+    )
+    text = replace_once(
+        text,
+        '        property bool wallpaperIsVideo: wallpaperPath.endsWith(".mp4") || wallpaperPath.endsWith(".webm") || wallpaperPath.endsWith(".mkv") || wallpaperPath.endsWith(".avi") || wallpaperPath.endsWith(".mov")\n        source: Qt.resolvedUrl(wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath)',
         "        property bool wallpaperIsVideo: Wallpapers.isVideoPath(wallpaperPath)\n        property bool wallpaperIsLive: Wallpapers.isLivePath(wallpaperPath)\n        source: Qt.resolvedUrl(wallpaperIsLive ? Wallpapers.fallbackFor(wallpaperPath) : Config.options.background.wallpaperPath)",
         f"wallpaper color fallback in {path}",
     )
@@ -1139,7 +1258,11 @@ def qml_property_block(text: str, marker: str, label: str) -> tuple[int, int]:
     if start < 0 or text.find(marker, start + len(marker)) >= 0:
         fail(f"{label}: expected exactly one {marker!r}")
     marker_brace = marker.rfind("{")
-    brace = start + marker_brace if marker_brace >= 0 else text.find("{", start + len(marker))
+    brace = (
+        start + marker_brace
+        if marker_brace >= 0
+        else text.find("{", start + len(marker))
+    )
     if brace < 0:
         fail(f"{label}: opening brace missing")
     depth = 0

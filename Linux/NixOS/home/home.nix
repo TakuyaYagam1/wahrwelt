@@ -66,6 +66,10 @@ let
     ./programs/vesktop.nix
     ./programs/packages.nix
   ];
+  desktopImports = [
+    inputs.zen-browser.homeModules.beta
+    ./programs/zen-browser.nix
+  ];
   developerImports = [
     inputs.codex-desktop-linux.homeManagerModules.default
     ./programs/codex-desktop.nix
@@ -97,7 +101,7 @@ in
 
   imports =
     coreImports
-    ++ lib.optionals desktopOrMore shellImports
+    ++ lib.optionals desktopOrMore (desktopImports ++ shellImports)
     ++ lib.optionals developerOrMore developerImports;
 
   home = {
@@ -145,8 +149,12 @@ in
   # inside the HM evaluation as well.
   stylix = {
     overlays.enable = false;
-    targets.neovim.enable = false;
-    targets.rofi.enable = false;
+    targets = {
+      neovim.enable = false;
+      rofi.enable = false;
+      # Sine and user-installed mods own the browser theme.
+      zen-browser.enable = false;
+    };
   };
 
   xdg.configFile = lib.genAttrs generatedConfigFiles (_: {

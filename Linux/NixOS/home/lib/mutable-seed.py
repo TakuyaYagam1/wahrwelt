@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import contextlib
 import ctypes
 import errno
 import hashlib
@@ -9,7 +9,6 @@ import stat
 import subprocess
 import sys
 from dataclasses import dataclass
-
 
 RENAME_NOREPLACE = 1
 MAX_JSON_BYTES = 64 * 1024 * 1024
@@ -216,7 +215,10 @@ class TargetContext:
             visible_root = os.lstat(self.root)
         except OSError:
             fail(f"HOME changed during seed transaction: {self.root}")
-        if not stat.S_ISDIR(visible_root.st_mode) or inode_id(visible_root) != self.identities[0]:
+        if (
+            not stat.S_ISDIR(visible_root.st_mode)
+            or inode_id(visible_root) != self.identities[0]
+        ):
             fail(f"HOME changed during seed transaction: {self.root}")
         current = os.dup(self.fds[0])
         try:
@@ -305,7 +307,9 @@ def retain_file_candidate(
     )
 
 
-def retain_directory_candidate(parent_fd: int, name: str, expected: tuple[int, int]) -> None:
+def retain_directory_candidate(
+    parent_fd: int, name: str, expected: tuple[int, int]
+) -> None:
     info = lstat_at(parent_fd, name)
     if info is None:
         return
@@ -351,7 +355,9 @@ def publish_empty_directory(
         except OSError as error:
             retain_directory_candidate(parent_fd, candidate, candidate_id)
             if error.errno == errno.EEXIST:
-                fail(f"concurrent winner appeared while creating directory: {context.target}")
+                fail(
+                    f"concurrent winner appeared while creating directory: {context.target}"
+                )
             raise
         published = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
         if not stat.S_ISDIR(published.st_mode) or inode_id(published) != candidate_id:
@@ -369,7 +375,9 @@ def ensure_directory(root: str, target: str) -> None:
     with TargetContext(root, target, create_parents=True) as context:
         if classify_existing(context, "directory"):
             return
-        directory_fd = publish_empty_directory(context, context.parent_fd, context.name, 0o755)
+        directory_fd = publish_empty_directory(
+            context, context.parent_fd, context.name, 0o755
+        )
         os.close(directory_fd)
         context.validate_chain()
 
@@ -412,7 +420,7 @@ def source_file_bytes(
                 body = line
                 if line.endswith(b"\r\n"):
                     body, ending = line[:-2], b"\r\n"
-                elif line.endswith(b"\n") or line.endswith(b"\r"):
+                elif line.endswith((b"\n", b"\r")):
                     body, ending = line[:-1], line[-1:]
                 if body.startswith(prefix):
                     transformed.append(replacement_line + ending)
@@ -511,10 +519,8 @@ def seed_file(root: str, target: str, source: str, replacement: str) -> None:
                 candidate_snapshot,
             )
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(candidate_fd)
-            except OSError:
-                pass
             raise
 
 
@@ -541,10 +547,8 @@ def seed_file_with_line(
                 candidate_snapshot,
             )
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(candidate_fd)
-            except OSError:
-                pass
             raise
 
 
@@ -624,14 +628,19 @@ def seed_tree(root: str, target: str, source: str) -> None:
             except OSError as error:
                 retain_directory_candidate(context.parent_fd, candidate, candidate_id)
                 if error.errno == errno.EEXIST:
-                    fail(f"concurrent winner appeared while seeding directory: {target}")
+                    fail(
+                        f"concurrent winner appeared while seeding directory: {target}"
+                    )
                 raise
             published = os.stat(
                 context.name,
                 dir_fd=context.parent_fd,
                 follow_symlinks=False,
             )
-            if not stat.S_ISDIR(published.st_mode) or inode_id(published) != candidate_id:
+            if (
+                not stat.S_ISDIR(published.st_mode)
+                or inode_id(published) != candidate_id
+            ):
                 fail(f"published directory identity changed: {target}")
             os.fchmod(candidate_fd, 0o755)
             os.fsync(candidate_fd)
@@ -667,8 +676,7 @@ def run_jq_transform(
     result = subprocess.run(
         [jq_path, *jq_arguments, jq_filter],
         input=value,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
     if result.returncode != 0:
@@ -707,7 +715,9 @@ def read_existing_json(
         if not visible_regular_matches(context.parent_fd, context.name, snapshot):
             fail(f"JSON file changed while being validated: {context.target}")
         parsed = parse_json_object(value, f"existing JSON file {context.target}")
-        final_snapshot, final_value = read_regular_snapshot(fd, require_single_link=False)
+        final_snapshot, final_value = read_regular_snapshot(
+            fd, require_single_link=False
+        )
         if final_snapshot != snapshot or final_value != value:
             fail(f"JSON file changed while being validated: {context.target}")
         return snapshot, value, parsed
@@ -727,7 +737,9 @@ def seed_json_object(
     with TargetContext(root, target) as context:
         existing = lstat_at(context.parent_fd, context.name)
         if existing is not None:
-            existing_snapshot, existing_value, existing_json = read_existing_json(context)
+            existing_snapshot, existing_value, existing_json = read_existing_json(
+                context
+            )
             if jq_filter:
                 _, transformed_json = run_jq_transform(
                     existing_value,
@@ -743,7 +755,9 @@ def seed_json_object(
             test_barrier()
             final_snapshot, final_value, _ = read_existing_json(context)
             if final_snapshot != existing_snapshot or final_value != existing_value:
-                fail(f"existing JSON changed during validation and was preserved: {target}")
+                fail(
+                    f"existing JSON changed during validation and was preserved: {target}"
+                )
             return
 
         source_value = source_file_bytes(source, replacement)
@@ -767,10 +781,8 @@ def seed_json_object(
                 candidate_snapshot,
             )
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(candidate_fd)
-            except OSError:
-                pass
             raise
 
 

@@ -13,6 +13,7 @@ STATIX := $(NIX_RUN)statix --
 DEADNIX := $(NIX_RUN)deadnix --
 SHFMT := $(NIX_RUN)shfmt --
 STYLUA := $(NIX_RUN)stylua --
+RUFF := nix run --no-write-lock-file --inputs-from $(REPO_ROOT) nixpkgs\#ruff --
 
 # find -print0 chains keep paths with spaces intact (e.g. NixOS/home/noctalia/.../Catppuccin Lavender/).
 NIX_FIND := find $(NIXOS_DIR) -type f -name '*.nix' -print0
@@ -22,7 +23,6 @@ FISH_FIND := find $(DOTS_DIR)/hypr/scripts -type f -name '*.fish' -print0
 LUA_DIRS := $(DOTS_DIR)/nvim $(DOTS_DIR)/hypr
 LUA_FIND := find $(LUA_DIRS) -type f -name '*.lua' -print0
 JSON_FIND := find $(NIXOS_DIR) $(DOTS_DIR) $(INSTALLER_DIR)/internal/shellruntime -type f -name '*.json' ! -name 'lazy-lock.json' -print0
-PYTHON_FIND := find $(NIXOS_DIR) $(DOTS_DIR)/hypr/scripts -type f -name '*.py' -print0
 
 ##@ Aggregate
 
@@ -30,10 +30,10 @@ PYTHON_FIND := find $(NIXOS_DIR) $(DOTS_DIR)/hypr/scripts -type f -name '*.py' -
 lint: lint-go lint-nix lint-shell lint-lua lint-json lint-python ## Run all linters across go/nix/shell/lua/json/python
 
 .PHONY: fmt-check
-fmt-check: fmt-check-go fmt-check-nix fmt-check-shell fmt-check-lua ## Check formatting without writing
+fmt-check: fmt-check-go fmt-check-nix fmt-check-shell fmt-check-lua fmt-check-python ## Check formatting without writing
 
 .PHONY: fmt
-fmt: fmt-go fmt-nix fmt-shell fmt-lua ## Apply formatting in place across go/nix/shell/lua
+fmt: fmt-go fmt-nix fmt-shell fmt-lua fmt-python ## Apply formatting in place across go/nix/shell/lua/python
 
 .PHONY: test
 test: test-go test-hypr-integration ## Run all Go and Hypr integration test suites
@@ -160,8 +160,16 @@ lint-json: ## jq empty on every JSON in NixOS/, dots/, installer manifests
 	echo "lint-json: $$count .json files parse cleanly"
 
 .PHONY: lint-python
-lint-python: ## python ast.parse on NixOS helpers, patch sources, and Hypr tests
-	@$(PYTHON_FIND) | xargs -0 -r python3 -c 'import ast, pathlib, sys; [ast.parse(pathlib.Path(path).read_text()) for path in sys.argv[1:]]'
+lint-python: ## Ruff checks on Python helpers, patch sources, and tests
+	$(RUFF) check $(REPO_ROOT)
+
+.PHONY: fmt-python
+fmt-python: ## Format Python with Ruff
+	$(RUFF) format $(REPO_ROOT)
+
+.PHONY: fmt-check-python
+fmt-check-python: ## Check Python formatting with Ruff
+	$(RUFF) format --check $(REPO_ROOT)
 
 ##@ Project-wide checks
 

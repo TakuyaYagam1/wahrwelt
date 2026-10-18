@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """Patch end4-pC for immutable Wahrwelt-managed installation."""
 
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -85,9 +84,7 @@ def qml_function_span(text: str, name: str, label: str) -> tuple[int, int]:
     raise SystemExit(f"unrecognized {label}: unterminated {name} function")
 
 
-def replace_qml_function(
-    text: str, name: str, replacement: str, label: str
-) -> str:
+def replace_qml_function(text: str, name: str, replacement: str, label: str) -> str:
     start, end = qml_function_span(text, name, label)
     return text[:start] + replacement.rstrip("\n") + text[end:]
 
@@ -96,7 +93,7 @@ def normalized_source(text: str) -> str:
     return " ".join(text.split())
 
 
-UPSTREAM_SYSTEM_UPDATE = '''\
+UPSTREAM_SYSTEM_UPDATE = """\
     function runSystemUpdate() {
         Quickshell.execDetached([
             "kitty", "--hold",
@@ -105,9 +102,9 @@ UPSTREAM_SYSTEM_UPDATE = '''\
         ])
         Qt.callLater(() => GlobalStates.settingsOpen = false)
     }
-'''
+"""
 
-UPSTREAM_DOTS_UPDATE = '''\
+UPSTREAM_DOTS_UPDATE = """\
     function runUpdateDots() {
         const updateScript = `
             set -e
@@ -131,7 +128,7 @@ UPSTREAM_DOTS_UPDATE = '''\
         Quickshell.execDetached(["kitty", "--hold", "bash", "-c", updateScript])
         Qt.callLater(() => GlobalStates.settingsOpen = false)
     }
-'''
+"""
 
 
 def update_function_sources(updater_notice: str) -> tuple[str, str]:
@@ -204,9 +201,7 @@ def validate_shared_update_callers(root: Path) -> None:
             raise SystemExit(
                 f"unrecognized end4-pC DotsUpdater call sites: About.qml does not forward {action}"
             )
-        dashboard_call = re.compile(
-            rf"DotsUpdater\s*\.\s*{action}\s*\(\s*\)"
-        )
+        dashboard_call = re.compile(rf"DotsUpdater\s*\.\s*{action}\s*\(\s*\)")
         if not dashboard_call.search(dashboard_text):
             raise SystemExit(
                 f"unrecognized end4-pC DotsUpdater call sites: DashboardHomePage.qml lacks {action}"
@@ -223,7 +218,9 @@ def patch_dots_updater(root: Path, updater_notice: str) -> None:
         text, "runUpdateDots", "end4-pC DotsUpdater"
     )
     if system_end > dots_start:
-        raise SystemExit("unrecognized end4-pC DotsUpdater: updater functions are reordered")
+        raise SystemExit(
+            "unrecognized end4-pC DotsUpdater: updater functions are reordered"
+        )
     if normalized_source(text[system_start:system_end]) != normalized_source(
         UPSTREAM_SYSTEM_UPDATE
     ):
@@ -337,7 +334,7 @@ def patch_managed_hypridle_settings(root: Path) -> None:
             raise SystemExit("unrecognized end4-pC hypridle settings implementation")
         return
 
-    upstream_block = '''    readonly property string idleConfiguratorScriptPath: Quickshell.shellPath("scripts/hyprland/hypridleconfigurator.py")
+    upstream_block = """    readonly property string idleConfiguratorScriptPath: Quickshell.shellPath("scripts/hyprland/hypridleconfigurator.py")
     readonly property string hypridlePath: FileUtils.trimFileProtocol(`${Directories.config}/hypr/hypridle.conf`)
 
     function setIdle(lock: int, screenOff: int, suspend: int) {
@@ -351,8 +348,8 @@ def patch_managed_hypridle_settings(root: Path) -> None:
         Quickshell.execDetached(["bash", "-c", "pkill -x hypridle; sleep 0.3; setsid -f hypridle >/dev/null 2>&1"])
     }
 
-'''
-    managed_block = '''    function setIdle(lock: int, screenOff: int, suspend: int) {
+"""
+    managed_block = """    function setIdle(lock: int, screenOff: int, suspend: int) {
         Quickshell.execDetached([
             "notify-send",
             "Wahrwelt",
@@ -361,7 +358,7 @@ def patch_managed_hypridle_settings(root: Path) -> None:
         ])
     }
 
-'''
+"""
     service_text = replace_once(
         service_text,
         upstream_block,
@@ -374,19 +371,19 @@ def patch_managed_hypridle_settings(root: Path) -> None:
 
     page_path = root / "modules/ii/settings/pages/HyprlandConfig.qml"
     page_text = page_path.read_text()
-    idle_section = '''        ContentSection {
+    idle_section = """        ContentSection {
             id: idleSection
             icon: "timer"
             shape: MaterialShape.Shape.Cookie12Sided
             title: Translation.tr("Idle")
-'''
-    managed_idle_section = '''        ContentSection {
+"""
+    managed_idle_section = """        ContentSection {
             id: idleSection
             visible: false
             icon: "timer"
             shape: MaterialShape.Shape.Cookie12Sided
             title: Translation.tr("Idle")
-'''
+"""
     page_path.write_text(
         replace_once(
             page_text,

@@ -5,7 +5,9 @@ from pathlib import Path
 from PIL import Image
 
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mkv", ".mov", ".avi"})
-IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"})
+IMAGE_EXTENSIONS = frozenset(
+    {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"}
+)
 VALID_WALLPAPER_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
 
 
@@ -18,7 +20,10 @@ def is_animated_image(path: str | Path) -> bool:
 
     try:
         with Image.open(image_path) as image:
-            return bool(getattr(image, "is_animated", False) or getattr(image, "n_frames", 1) > 1)
+            return bool(
+                getattr(image, "is_animated", False)
+                or getattr(image, "n_frames", 1) > 1
+            )
     except (OSError, ValueError):
         return False
 
@@ -35,7 +40,9 @@ def is_video_file(path: str | Path) -> bool:
 def is_live_file(path: str | Path) -> bool:
     image_path = Path(path)
     suffix = image_path.suffix.lower()
-    return suffix in VIDEO_EXTENSIONS or suffix == ".gif" or is_animated_webp(image_path)
+    return (
+        suffix in VIDEO_EXTENSIONS or suffix == ".gif" or is_animated_webp(image_path)
+    )
 
 
 def classify_path(path: str | Path) -> str:

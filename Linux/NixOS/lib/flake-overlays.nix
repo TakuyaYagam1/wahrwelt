@@ -29,13 +29,7 @@ let
         neovim = inputs.neovim-nightly-overlay.packages.${system}.default;
       };
       desktopPackages =
-        if desktopOrMore then
-          shellOverlays.shellPackagesFor { inherit prev system; }
-          // {
-            zen-browser = inputs.zen-browser.packages.${system}.default;
-          }
-        else
-          { };
+        if desktopOrMore then shellOverlays.shellPackagesFor { inherit prev system; } else { };
       developerPackages =
         if developerOrMore then
           {

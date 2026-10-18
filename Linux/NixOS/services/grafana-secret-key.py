@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Create Grafana's secret in one root-owned directory without following names."""
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ import pwd
 import re
 import stat
 import sys
-
 
 AT_EMPTY_PATH = 0x1000
 SECRET_NAME = "secret_key"
@@ -79,7 +77,9 @@ def read_existing(directory_fd: int, expected_uid: int, expected_gid: int) -> bo
         payload = os.pread(descriptor, 66, 0)
         after = os.fstat(descriptor)
         final_visible = os.stat(SECRET_NAME, dir_fd=directory_fd, follow_symlinks=False)
-        if identity(before) != identity(after) or identity(after) != identity(final_visible):
+        if identity(before) != identity(after) or identity(after) != identity(
+            final_visible
+        ):
             fail("existing secret changed while being validated")
         if SECRET_PATTERN.fullmatch(payload) is None:
             fail("existing secret has unknown or incomplete content")
@@ -113,10 +113,9 @@ def read_migration_source(path: str) -> bytes:
     try:
         opened_parent = os.fstat(parent_fd)
         visible_parent = os.lstat(parent_path)
-        if (
-            not stat.S_ISDIR(opened_parent.st_mode)
-            or identity(opened_parent) != identity(visible_parent)
-        ):
+        if not stat.S_ISDIR(opened_parent.st_mode) or identity(
+            opened_parent
+        ) != identity(visible_parent):
             fail("migration source parent changed while being opened")
         visible = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
         if (
@@ -137,7 +136,9 @@ def read_migration_source(path: str) -> bytes:
             payload = os.pread(source_fd, 66, 0)
             after = os.fstat(source_fd)
             final_visible = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-            if identity(before) != identity(after) or identity(after) != identity(final_visible):
+            if identity(before) != identity(after) or identity(after) != identity(
+                final_visible
+            ):
                 fail("migration source changed while being validated")
             if SECRET_PATTERN.fullmatch(payload) is None:
                 fail("migration source has unknown or incomplete content")
@@ -235,7 +236,9 @@ def main() -> None:
         ):
             fail("secret directory must be an exact root:grafana 0750 directory")
         if not read_existing(descriptor, expected_uid, expected_gid):
-            payload = read_migration_source(migration_source) if migration_source else None
+            payload = (
+                read_migration_source(migration_source) if migration_source else None
+            )
             publish_secret(descriptor, expected_uid, expected_gid, payload)
     finally:
         os.close(descriptor)

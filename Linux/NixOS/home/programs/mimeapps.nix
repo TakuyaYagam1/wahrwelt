@@ -8,7 +8,7 @@
 let
   desktopOrMore = wahrweltLib.presets.desktopOrMore wahrwelt;
 
-  browser = [ "zen.desktop" ];
+  browser = [ "zen-beta.desktop" ];
   editor = [ "code.desktop" ];
   fileManager = [ "thunar.desktop" ];
   imageViewer = [ "org.gnome.Loupe.desktop" ];

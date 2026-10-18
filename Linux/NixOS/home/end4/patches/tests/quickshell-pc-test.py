@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Regression tests for the end4-pC update action patch."""
 
 from __future__ import annotations
@@ -6,15 +5,14 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-
 
 sys.dont_write_bytecode = True
 PATCHER_PATH = Path(__file__).resolve().parent.parent / "quickshell-pc.py"
@@ -27,7 +25,7 @@ SPEC.loader.exec_module(QUICKSHELL_PC)
 
 UPDATER_NOTICE = "Wahrwelt manages end4-pC updates through the flake input"
 
-LEGACY_ABOUT = '''\
+LEGACY_ABOUT = """\
 ContentPage {
     function runSystemUpdate() {
         Quickshell.execDetached([
@@ -59,9 +57,9 @@ ContentPage {
 
     Rectangle {}
 }
-'''
+"""
 
-SHARED_UPDATER = '''\
+SHARED_UPDATER = """\
 pragma Singleton
 
 import qs
@@ -105,7 +103,7 @@ Singleton {
         return "managed"
     }
 }
-'''
+"""
 
 
 def write_file(root: Path, relative_path: str, text: str) -> Path:
@@ -116,7 +114,7 @@ def write_file(root: Path, relative_path: str, text: str) -> Path:
 
 
 def updates_count_source() -> str:
-    return '''\
+    return """\
 Process {
         command: [
             "kitty", "--hold",
@@ -124,7 +122,7 @@ Process {
             "yay -Syu --combinedupgrade=false"
         ]
 }
-'''
+"""
 
 
 def run_main(root: Path) -> None:
@@ -177,7 +175,7 @@ def update_functions(text: str) -> str:
 
 def execute_update_functions(text: str) -> dict[str, object]:
     node = node_executable()
-    harness = r'''
+    harness = r"""
 const fs = require("node:fs");
 const detached = [];
 const state = { settingsOpen: true };
@@ -191,7 +189,7 @@ const actions = new Function(
 actions.runSystemUpdate();
 actions.runUpdateDots();
 process.stdout.write(JSON.stringify({ detached, settingsOpen: state.settingsOpen }));
-'''
+"""
     result = subprocess.run(
         [node, "-e", harness],
         input=update_functions(text),
@@ -214,7 +212,7 @@ def node_executable() -> str:
 
 def execute_about_forwarders(text: str) -> list[str]:
     node = node_executable()
-    harness = r'''
+    harness = r"""
 const fs = require("node:fs");
 const calls = [];
 const source = fs.readFileSync(0, "utf8");
@@ -228,7 +226,7 @@ const actions = new Function(
 actions.runSystemUpdate();
 actions.runUpdateDots();
 process.stdout.write(JSON.stringify(calls));
-'''
+"""
     result = subprocess.run(
         [node, "-e", harness],
         input=update_functions(text),
@@ -263,7 +261,9 @@ class QuickShellPcUpdatePatchTest(unittest.TestCase):
                     "settingsOpen": False,
                 },
             )
-            self.assertIn('command: ["foot", "nixos-update"]', updates_count.read_text())
+            self.assertIn(
+                'command: ["foot", "nixos-update"]', updates_count.read_text()
+            )
 
     def test_shared_updater_protects_about_and_dashboard_call_sites(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -272,7 +272,7 @@ class QuickShellPcUpdatePatchTest(unittest.TestCase):
             about = write_file(
                 root,
                 "modules/ii/settings/pages/About.qml",
-                '''\
+                """\
 ContentPage {
     function runSystemUpdate( ) {
         DotsUpdater . runSystemUpdate ( );
@@ -282,22 +282,20 @@ ContentPage {
     }
     Rectangle {}
 }
-''',
+""",
             )
             dashboard = write_file(
                 root,
                 "modules/ii/settings/DashboardHomePage.qml",
-                '''\
+                """\
 Item {
     downAction: () => DotsUpdater.runSystemUpdate()
     downAction: () => DotsUpdater.runUpdateDots()
 }
-''',
+""",
             )
 
-            write_file(
-                root, "modules/ii/bar/UpdatesCount.qml", updates_count_source()
-            )
+            write_file(root, "modules/ii/bar/UpdatesCount.qml", updates_count_source())
             run_main(root)
 
             self.assertEqual(
@@ -325,13 +323,15 @@ Item {
             )
 
     def test_missing_node_is_a_clear_test_failure(self) -> None:
-        with patch.dict(os.environ, {"NODE": "missing-node"}):
-            with patch("shutil.which", return_value=None):
-                with self.assertRaisesRegex(
-                    RuntimeError,
-                    "Node.js executable 'missing-node'.*required",
-                ):
-                    execute_update_functions("")
+        with (
+            patch.dict(os.environ, {"NODE": "missing-node"}),
+            patch("shutil.which", return_value=None),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "Node.js executable 'missing-node'.*required",
+            ),
+        ):
+            execute_update_functions("")
 
     def test_unrecognized_shared_updater_is_rejected_without_writing(self) -> None:
         malformed_sources = (
@@ -348,32 +348,34 @@ Item {
             ),
         )
         for malformed in malformed_sources:
-            with self.subTest(malformed=malformed != malformed_sources[0]):
-                with tempfile.TemporaryDirectory() as directory:
-                    root = Path(directory)
-                    service = write_file(root, "services/DotsUpdater.qml", malformed)
-                    original = service.read_text()
-                    about = write_file(
-                        root,
-                        "modules/ii/settings/pages/About.qml",
-                        '''\
+            with (
+                self.subTest(malformed=malformed != malformed_sources[0]),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                service = write_file(root, "services/DotsUpdater.qml", malformed)
+                original = service.read_text()
+                about = write_file(
+                    root,
+                    "modules/ii/settings/pages/About.qml",
+                    """\
 ContentPage {
     function runSystemUpdate() { DotsUpdater.runSystemUpdate() }
     function runUpdateDots() { DotsUpdater.runUpdateDots() }
     Rectangle {}
 }
-''',
-                    )
-                    about_original = about.read_text()
-                    write_file(
-                        root, "modules/ii/bar/UpdatesCount.qml", updates_count_source()
-                    )
+""",
+                )
+                about_original = about.read_text()
+                write_file(
+                    root, "modules/ii/bar/UpdatesCount.qml", updates_count_source()
+                )
 
-                    with self.assertRaisesRegex(SystemExit, "unrecognized.*DotsUpdater"):
-                        run_main(root)
+                with self.assertRaisesRegex(SystemExit, "unrecognized.*DotsUpdater"):
+                    run_main(root)
 
-                    self.assertEqual(service.read_text(), original)
-                    self.assertEqual(about.read_text(), about_original)
+                self.assertEqual(service.read_text(), original)
+                self.assertEqual(about.read_text(), about_original)
 
 
 if __name__ == "__main__":

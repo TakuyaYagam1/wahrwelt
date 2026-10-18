@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Verify native, profile-scoped End4 settings launch contracts."""
 
 from __future__ import annotations
@@ -9,9 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-OFFICIAL_SETTINGS_LAUNCH = (
-    'Quickshell.execDetached(["wahrwelt-end4-settings"]);'
-)
+OFFICIAL_SETTINGS_LAUNCH = 'Quickshell.execDetached(["wahrwelt-end4-settings"]);'
 OFFICIAL_SETTINGS_BUTTONS = (
     "ii/modules/waffle/bar/StartButton.qml",
     "ii/modules/ii/sidebarRight/SidebarRightContent.qml",
@@ -59,10 +56,10 @@ def verify_pc(artifact: Path) -> None:
 def fake_qs_end4(path: Path) -> None:
     path.write_text(
         "#!/bin/sh\n"
-        ": \"${WAHRWELT_TEST_CALLS:?}\"\n"
+        ': "${WAHRWELT_TEST_CALLS:?}"\n'
         "printf '%s\\0' \"${WAHRWELT_END4_PROFILE:-}\" "
-        "\"${WAHRWELT_QS_CONFIG:-}\" \"${qsConfig:-}\" -- \"$@\" "
-        ">\"$WAHRWELT_TEST_CALLS\"\n"
+        '"${WAHRWELT_QS_CONFIG:-}" "${qsConfig:-}" -- "$@" '
+        '>"$WAHRWELT_TEST_CALLS"\n'
     )
     path.chmod(0o700)
 
@@ -154,8 +151,7 @@ def verify_hypr(artifact: Path) -> None:
     ]
     if arguments != expected:
         fail(
-            "End4 pC native settings launcher emitted "
-            f"{arguments!r}, want {expected!r}"
+            f"End4 pC native settings launcher emitted {arguments!r}, want {expected!r}"
         )
 
     result, arguments = launcher_call(

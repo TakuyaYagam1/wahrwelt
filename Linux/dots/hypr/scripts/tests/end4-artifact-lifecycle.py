@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 """Reject QuickShell lifecycle ownership outside the managed launcher."""
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import stat
 import sys
-
+from pathlib import Path
 
 SHELL_KILL = re.compile(r"(?<![A-Za-z0-9_])(?:kill|pkill|killall)\b([^;\n]*)")
 SHELL_EXEC = re.compile(
@@ -122,9 +120,12 @@ def verify_text(path: Path, text: str) -> None:
             body,
             re.DOTALL,
         )
-        if command != "hypridle" and first_quickshell is not None:
-            if ARRAY_IPC_TAIL.match(first_quickshell.group("tail")):
-                continue
+        if (
+            command != "hypridle"
+            and first_quickshell is not None
+            and ARRAY_IPC_TAIL.match(first_quickshell.group("tail"))
+        ):
+            continue
         if command == "hypridle":
             message = (
                 "realized End4 artifact contains a direct hypridle lifecycle launch "
@@ -220,7 +221,9 @@ def main() -> None:
         try:
             mode = path.stat().st_mode
         except OSError as error:
-            raise SystemExit(f"FAIL: cannot stat realized End4 artifact file {path}: {error}")
+            raise SystemExit(
+                f"FAIL: cannot stat realized End4 artifact file {path}: {error}"
+            ) from error
         if path.suffix.lower() not in TEXT_SUFFIXES and not (
             not path.suffix and mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         ):
@@ -228,7 +231,9 @@ def main() -> None:
         try:
             text = path.read_text(errors="replace")
         except OSError as error:
-            raise SystemExit(f"FAIL: cannot read realized End4 artifact file {path}: {error}")
+            raise SystemExit(
+                f"FAIL: cannot read realized End4 artifact file {path}: {error}"
+            ) from error
         verify_text(path, text)
 
 

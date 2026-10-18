@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Index End4 wallpaper media without relying on filename suffixes alone."""
 
 from __future__ import annotations
@@ -7,10 +6,9 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 from urllib.parse import quote
-
 
 FORMATS = {
     ".jpg": "static",
@@ -47,10 +45,13 @@ def webp_kind(path: Path) -> str:
         payload_end = min(len(data), payload_start + size)
         if chunk == b"ANIM" or chunk == b"ANMF":
             return "animated_webp"
-        if chunk == b"VP8X" and payload_end - payload_start >= 10:
-            # The animation flag is bit 1 in the VP8X feature byte.
-            if data[payload_start] & 0x02:
-                return "animated_webp"
+        # The animation flag is bit 1 in the VP8X feature byte.
+        if (
+            chunk == b"VP8X"
+            and payload_end - payload_start >= 10
+            and data[payload_start] & 0x02
+        ):
+            return "animated_webp"
         offset = payload_start + size + (size & 1)
 
     return "static"
@@ -66,7 +67,9 @@ def media_kind(path: Path) -> str:
 def thumbnail_path(path: Path) -> str:
     cache_home = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
     encoded = "/".join(quote(part, safe="") for part in str(path).split("/"))
-    digest = hashlib.md5(f"file://{encoded}".encode(), usedforsecurity=False).hexdigest()
+    digest = hashlib.md5(
+        f"file://{encoded}".encode(), usedforsecurity=False
+    ).hexdigest()
     return str(cache_home / "thumbnails" / "x-large" / f"{digest}.png")
 
 
@@ -122,7 +125,9 @@ def sort_entries(
     entries: list[dict[str, object]], sort_mode: str, custom_order: list[str]
 ) -> list[dict[str, object]]:
     if sort_mode == "name":
-        return ordered_dirs_and_files(entries, lambda entry: natural_key(str(entry["fileName"])))
+        return ordered_dirs_and_files(
+            entries, lambda entry: natural_key(str(entry["fileName"]))
+        )
     if sort_mode == "name_rev":
         return ordered_dirs_and_files(
             entries, lambda entry: natural_key(str(entry["fileName"])), reverse=True
@@ -132,7 +137,9 @@ def sort_entries(
             entries, lambda entry: float(entry["fileModified"]), reverse=True
         )
     if sort_mode == "time_rev":
-        return ordered_dirs_and_files(entries, lambda entry: float(entry["fileModified"]))
+        return ordered_dirs_and_files(
+            entries, lambda entry: float(entry["fileModified"])
+        )
     if sort_mode == "size":
         return ordered_dirs_and_files(
             entries, lambda entry: int(entry["fileSize"]), reverse=True
@@ -150,7 +157,9 @@ def sort_entries(
         return directories + files
     order_lookup = {name: index for index, name in enumerate(custom_order)}
     ordered_files = [entry for entry in files if entry["fileName"] in order_lookup]
-    remaining_files = [entry for entry in files if entry["fileName"] not in order_lookup]
+    remaining_files = [
+        entry for entry in files if entry["fileName"] not in order_lookup
+    ]
     ordered_files.sort(key=lambda entry: order_lookup[str(entry["fileName"])])
     remaining_files.sort(key=lambda entry: float(entry["fileModified"]), reverse=True)
     return directories + ordered_files + remaining_files

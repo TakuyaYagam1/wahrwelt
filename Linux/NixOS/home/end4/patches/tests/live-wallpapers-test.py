@@ -1,17 +1,15 @@
-#!/usr/bin/env python3
 """Regression tests for the End4 live wallpaper patcher."""
 
 from __future__ import annotations
 
 import importlib.util
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import textwrap
 import unittest
-
+from pathlib import Path
 
 sys.dont_write_bytecode = True
 PATCHER_PATH = Path(__file__).resolve().parent.parent / "live-wallpapers.py"
@@ -26,7 +24,7 @@ def switchwall_source(with_flags: bool) -> str:
     flags = '        MPVPAPER_FLAGS="-p -a max"\n' if with_flags else ""
     flag_use = "$MPVPAPER_FLAGS " if with_flags else ""
     return textwrap.dedent(
-        f'''\
+        f"""\
         CUSTOM_DIR="$XDG_CONFIG_HOME/hypr/custom"
         RESTORE_SCRIPT_DIR="$CUSTOM_DIR/scripts"
         RESTORE_SCRIPT="$RESTORE_SCRIPT_DIR/__restore_video_wallpaper.sh"
@@ -63,13 +61,13 @@ def switchwall_source(with_flags: bool) -> str:
             local monitor=DP-1
             mpvpaper {flag_use}-o "$VIDEO_OPTS" "$monitor" "$video_path" &
         }}
-        '''
+        """
     )
 
 
 def switchwall_source_with_ipc() -> str:
     return textwrap.dedent(
-        '''\
+        """\
         CUSTOM_DIR="$XDG_CONFIG_HOME/hypr/custom"
         RESTORE_SCRIPT_DIR="$CUSTOM_DIR/scripts"
         RESTORE_SCRIPT="$RESTORE_SCRIPT_DIR/__restore_video_wallpaper.sh"
@@ -104,7 +102,7 @@ def switchwall_source_with_ipc() -> str:
             rm -f "$MPV_SOCKET_PREFIX"*.sock
             mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock" "$monitor" "$video_path" &
         }
-        '''
+        """
     )
 
 
@@ -118,7 +116,9 @@ class PcSettingsPreviewTest(unittest.TestCase):
             "    ? Config.options.background.thumbnailPath\n"
             "    : Config.options.background.wallpaperPath"
         )
-        replacement = "source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)"
+        replacement = (
+            "source: Wallpapers.imageSourceFor(Config.options.background.wallpaperPath)"
+        )
 
         for indentation in (20, 24):
             with self.subTest(indentation=indentation):
@@ -150,13 +150,15 @@ class PcSidebarBannerTest(unittest.TestCase):
     def test_banner_patch_rejects_missing_or_ambiguous_expression(self) -> None:
         expression = (
             'source: Config.options.sidebar.bannerImage !== ""\n'
-            '    ? Config.options.sidebar.bannerImage\n'
-            '    : Config.options.background.wallpaperPath\n'
+            "    ? Config.options.sidebar.bannerImage\n"
+            "    : Config.options.background.wallpaperPath\n"
         )
         for source in (expression.replace("!==", "==="), expression * 2):
-            with self.subTest(source=source):
-                with self.assertRaisesRegex(SystemExit, "expected 1 matches"):
-                    LIVE_WALLPAPERS.patch_pc_sidebar_banner(source, "Sidebar fixture")
+            with (
+                self.subTest(source=source),
+                self.assertRaisesRegex(SystemExit, "expected 1 matches"),
+            ):
+                LIVE_WALLPAPERS.patch_pc_sidebar_banner(source, "Sidebar fixture")
 
 
 class WallpaperServiceDriftTest(unittest.TestCase):
@@ -173,13 +175,13 @@ class WallpaperServiceDriftTest(unittest.TestCase):
 
 
 class GeminiCategorizerTest(unittest.TestCase):
-    OLD_RESIZE = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
+    OLD_RESIZE = """RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
 
 # Resize image for speed
 mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
 magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
-'''
-    PC_VIDEO_RESIZE = '''RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
+"""
+    PC_VIDEO_RESIZE = """RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
 
 # Resize image for speed
 mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
@@ -191,20 +193,22 @@ case "${SOURCE_IMG_PATH,,}" in
         magick "$SOURCE_IMG_PATH[0]" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
         ;;
 esac
-'''
+"""
 
     def test_pc_categorizer_is_left_to_upstream(self) -> None:
         for source in (self.OLD_RESIZE, self.PC_VIDEO_RESIZE):
-            with self.subTest(native_video=source == self.PC_VIDEO_RESIZE):
-                with tempfile.TemporaryDirectory() as directory:
-                    root = Path(directory)
-                    path = root / "scripts/ai/gemini-categorize-wallpaper.sh"
-                    path.parent.mkdir(parents=True)
-                    path.write_text(source)
+            with (
+                self.subTest(native_video=source == self.PC_VIDEO_RESIZE),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                path = root / "scripts/ai/gemini-categorize-wallpaper.sh"
+                path.parent.mkdir(parents=True)
+                path.write_text(source)
 
-                    LIVE_WALLPAPERS.patch_gemini_categorizer(root)
+                LIVE_WALLPAPERS.patch_gemini_categorizer(root)
 
-                    self.assertEqual(path.read_text(), source)
+                self.assertEqual(path.read_text(), source)
 
     def test_official_categorizer_still_handles_video(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -216,8 +220,8 @@ esac
             LIVE_WALLPAPERS.patch_gemini_categorizer(root)
 
             patched = path.read_text()
-            self.assertIn('ffmpeg -nostdin -loglevel error', patched)
-            self.assertIn('trap cleanup EXIT', patched)
+            self.assertIn("ffmpeg -nostdin -loglevel error", patched)
+            self.assertIn("trap cleanup EXIT", patched)
             self.assertNotIn(self.OLD_RESIZE, patched)
 
 
@@ -247,7 +251,7 @@ class SwitchwallPatchTest(unittest.TestCase):
                 "hyprctl": "#!/bin/sh\nexit 0\n",
                 "jq": "#!/bin/sh\nprintf 'DP-1\\n'\n",
                 "sleep": "#!/bin/sh\nexit 0\n",
-                "mpvpaper": "#!/bin/sh\nprintf '%s\\0' \"$@\" >> \"$MPVPAPER_LOG\"\n",
+                "mpvpaper": '#!/bin/sh\nprintf \'%s\\0\' "$@" >> "$MPVPAPER_LOG"\n',
             }
             for name, contents in stubs.items():
                 stub = bin_dir / name
@@ -301,7 +305,9 @@ class SwitchwallPatchTest(unittest.TestCase):
             restore_text = restore.read_text()
             if runtime_dir is not None:
                 socket_path = runtime_dir / "mpvpaper-DP-1.sock"
-                self.assertFalse(socket_path.exists(), "restore did not clear its IPC socket")
+                self.assertFalse(
+                    socket_path.exists(), "restore did not clear its IPC socket"
+                )
                 socket_path.touch()
 
             runtime_env = env.copy()
@@ -324,7 +330,9 @@ class SwitchwallPatchTest(unittest.TestCase):
             self.assertEqual(runtime_playback.stderr, "")
             runtime_args = runtime_log.read_bytes().decode().rstrip("\0").split("\0")
             if runtime_dir is not None:
-                self.assertFalse(socket_path.exists(), "runtime switch did not clear its IPC socket")
+                self.assertFalse(
+                    socket_path.exists(), "runtime switch did not clear its IPC socket"
+                )
 
             cleared = subprocess.run(
                 [
@@ -350,7 +358,9 @@ class SwitchwallPatchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "unexpected"
             video_path = f"wallpaper 'quoted' $(touch {marker}).mp4"
-            args, _, restore_text = self.make_restore(switchwall_source(False), video_path)
+            args, _, restore_text = self.make_restore(
+                switchwall_source(False), video_path
+            )
 
             self.assertEqual(
                 args,
@@ -375,7 +385,9 @@ class SwitchwallPatchTest(unittest.TestCase):
         )
         args, _, _ = self.make_restore(source, "/home/user/Wallpapers/slow dance.mp4")
 
-        self.assertEqual(args[:5], ["-p", "-a", "max", "-o", "no-audio loop hwdec=auto"])
+        self.assertEqual(
+            args[:5], ["-p", "-a", "max", "-o", "no-audio loop hwdec=auto"]
+        )
 
     def test_current_upstream_ipc_shape_keeps_socket_and_argv_safe(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -428,15 +440,16 @@ class SwitchwallPatchTest(unittest.TestCase):
             source.replace("mpvpaper $MPVPAPER_FLAGS -o", "mpvpaper -o", 1),
             source + '\nMPVPAPER_FLAGS="-p -a max"\n',
             source.replace("create_restore_script()", "create_restore_file()"),
-            source + "\nmpvpaper $MPVPAPER_FLAGS -o \\\"$VIDEO_OPTS\\\" \\\"$monitor\\\" \\\"$video_path\\\" &\n",
+            source
+            + '\nmpvpaper $MPVPAPER_FLAGS -o \\"$VIDEO_OPTS\\" \\"$monitor\\" \\"$video_path\\" &\n',
             ipc_source.replace(
                 runtime_ipc_call,
                 'mpvpaper $MPVPAPER_FLAGS -o "$VIDEO_OPTS" "$monitor" "$video_path" &',
                 1,
             ),
             ipc_source.replace(
-                'input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock',
-                'input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock',
+                "input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock",
+                "input-ipc-server=$MPV_SOCKET_PREFIX$monitor.sock",
                 1,
             ),
             ipc_source.replace(
@@ -445,8 +458,8 @@ class SwitchwallPatchTest(unittest.TestCase):
             ),
             ipc_source.replace('rm -f "$MPV_SOCKET_PREFIX"*.sock\n', "", 1),
             ipc_source.replace(
-                'input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock',
-                'input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock,unsupported=yes',
+                "input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock",
+                "input-ipc-server=$MPV_SOCKET_PREFIX\\$monitor.sock,unsupported=yes",
                 1,
             ),
             ipc_source.replace('MPVPAPER_FLAGS="-p -a max"\n', "").replace(
@@ -454,17 +467,19 @@ class SwitchwallPatchTest(unittest.TestCase):
             ),
         )
         for invalid in invalid_sources:
-            with self.subTest(source=invalid[:80]):
-                with tempfile.TemporaryDirectory() as directory:
-                    root = Path(directory)
-                    script = root / "scripts/colors/switchwall.sh"
-                    script.parent.mkdir(parents=True)
-                    script.write_text(invalid)
+            with (
+                self.subTest(source=invalid[:80]),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                script = root / "scripts/colors/switchwall.sh"
+                script.parent.mkdir(parents=True)
+                script.write_text(invalid)
 
-                    with self.assertRaisesRegex(SystemExit, "switchwall"):
-                        LIVE_WALLPAPERS.patch_switchwall(root)
+                with self.assertRaisesRegex(SystemExit, "switchwall"):
+                    LIVE_WALLPAPERS.patch_switchwall(root)
 
-                    self.assertEqual(script.read_text(), invalid)
+                self.assertEqual(script.read_text(), invalid)
 
 
 if __name__ == "__main__":

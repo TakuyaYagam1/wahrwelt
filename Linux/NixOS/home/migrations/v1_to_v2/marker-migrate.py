@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
 import ctypes
 import json
 import os
 import secrets
 import stat
 import sys
-
 
 AT_EMPTY_PATH = 0x1000
 RENAME_NOREPLACE = 1
@@ -23,7 +21,9 @@ def fail(message: str, code: int = 1) -> None:
 
 
 def collision(old: str, new: str, detail: str) -> None:
-    fail(f"Wahrwelt migration conflict: marker ownership changed for {old} -> {new}: {detail}")
+    fail(
+        f"Wahrwelt migration conflict: marker ownership changed for {old} -> {new}: {detail}"
+    )
 
 
 def inode_id(info: os.stat_result) -> tuple[int, int]:
@@ -237,11 +237,13 @@ def remove_exact_legacy_marker(
         dir_fd=parent_fd,
     )
     try:
-        recovery_id = inode_id(os.fstat(recovery_fd))
+        inode_id(os.fstat(recovery_fd))
         try:
             current_old, current_payload = read_marker(parent_fd, old_name, old_display)
         except SystemExit as error:
-            raise MarkerRemovalError("legacy marker changed before exact removal") from error
+            raise MarkerRemovalError(
+                "legacy marker changed before exact removal"
+            ) from error
         if inode_id(current_old) != expected_old or not marker_matches(
             current_payload, "mysetup", expected_kind
         ):
@@ -257,7 +259,9 @@ def remove_exact_legacy_marker(
                 "legacy-marker",
             )
         except OSError as error:
-            raise MarkerRemovalError(f"could not move legacy marker to recovery: {error}") from error
+            raise MarkerRemovalError(
+                f"could not move legacy marker to recovery: {error}"
+            ) from error
 
         recovered = lstat_at(recovery_fd, "legacy-marker")
         moved_expected = recovered is not None and inode_id(recovered) == expected_old
@@ -279,7 +283,11 @@ def remove_exact_legacy_marker(
                     f"unexpected marker moved during exact removal; recovery retained at {recovery_path}: {error}"
                 ) from error
             restored = lstat_at(parent_fd, old_name)
-            if recovered is None or restored is None or inode_id(restored) != inode_id(recovered):
+            if (
+                recovered is None
+                or restored is None
+                or inode_id(restored) != inode_id(recovered)
+            ):
                 raise MarkerRemovalError(
                     f"unexpected marker restore had an uncertain postcondition; inspect {recovery_path}"
                 )
@@ -304,7 +312,9 @@ def remove_exact_legacy_marker(
                 raise MarkerRemovalError(
                     f"marker parent changed; recovery retained at {recovery_path}: {error}"
                 ) from error
-            raise MarkerRemovalError("marker parent changed; legacy marker restored through pinned parent")
+            raise MarkerRemovalError(
+                "marker parent changed; legacy marker restored through pinned parent"
+            )
         return recovery_path
     finally:
         os.close(recovery_fd)
@@ -338,7 +348,9 @@ def retain_exact_marker(
         try:
             rename_noreplace(parent_fd, name, recovery_fd, recovery_entry)
         except OSError as error:
-            raise MarkerRemovalError(f"could not move generated marker to recovery: {error}") from error
+            raise MarkerRemovalError(
+                f"could not move generated marker to recovery: {error}"
+            ) from error
         moved = lstat_at(recovery_fd, recovery_entry)
         moved_expected = moved is not None and inode_id(moved) == expected
         if moved_expected:
@@ -357,11 +369,17 @@ def retain_exact_marker(
                     f"unexpected marker moved while retaining generated marker; recovery kept at {recovery_path}: {error}"
                 ) from error
             restored = lstat_at(parent_fd, name)
-            if moved is None or restored is None or inode_id(restored) != inode_id(moved):
+            if (
+                moved is None
+                or restored is None
+                or inode_id(restored) != inode_id(moved)
+            ):
                 raise MarkerRemovalError(
                     f"generated marker restore had an uncertain postcondition; inspect {recovery_path}"
                 )
-            raise MarkerRemovalError("generated marker changed; concurrent replacement restored")
+            raise MarkerRemovalError(
+                "generated marker changed; concurrent replacement restored"
+            )
         return recovery_path
     finally:
         os.close(recovery_fd)
@@ -373,9 +391,7 @@ def check(old: str, new: str, config_home: str, home: str) -> None:
     parent_fd, parent_info = pin_parent(parent, old, new)
     try:
         old_info, old_payload = read_marker(parent_fd, old_name, old)
-        require_marker_schema(
-            old_payload, "mysetup", expected_kind, old, new, "legacy"
-        )
+        require_marker_schema(old_payload, "mysetup", expected_kind, old, new, "legacy")
         new_info = lstat_at(parent_fd, new_name)
         if new_info is None:
             kind = "publish"
@@ -402,7 +418,9 @@ def migrate(old: str, new: str, config_home: str, home: str, token: str) -> None
     fields = token.split("|")
     if len(fields) not in (3, 4) or fields[0] not in ("publish", "compatible"):
         fail("Wahrwelt marker migration received an invalid preflight token", 2)
-    if (fields[0] == "publish" and len(fields) != 3) or (fields[0] == "compatible" and len(fields) != 4):
+    if (fields[0] == "publish" and len(fields) != 3) or (
+        fields[0] == "compatible" and len(fields) != 4
+    ):
         fail("Wahrwelt marker migration received an invalid preflight token", 2)
     try:
         expected_parent = parse_id(fields[1])
@@ -457,7 +475,9 @@ def migrate(old: str, new: str, config_home: str, home: str, token: str) -> None
         try:
             candidate_payload = dict(old_payload)
             candidate_payload["manager"] = "wahrwelt"
-            candidate = (json.dumps(candidate_payload, indent=2, sort_keys=True) + "\n").encode()
+            candidate = (
+                json.dumps(candidate_payload, indent=2, sort_keys=True) + "\n"
+            ).encode()
             offset = 0
             while offset < len(candidate):
                 offset += os.write(candidate_fd, candidate[offset:])
@@ -485,7 +505,11 @@ def migrate(old: str, new: str, config_home: str, home: str, token: str) -> None
                 collision(old, new, "canonical marker appeared during publication")
 
             published = lstat_at(parent_fd, new_name)
-            anchored_ok = published is not None and stat.S_ISREG(published.st_mode) and inode_id(published) == candidate_id
+            anchored_ok = (
+                published is not None
+                and stat.S_ISREG(published.st_mode)
+                and inode_id(published) == candidate_id
+            )
             old_after, old_payload_after = read_marker(parent_fd, old_name, old)
             anchored_ok = (
                 anchored_ok
@@ -496,7 +520,10 @@ def migrate(old: str, new: str, config_home: str, home: str, token: str) -> None
             if visible_parent_matches(parent, expected_parent):
                 try:
                     visible_new = os.lstat(new)
-                    visible_ok = stat.S_ISREG(visible_new.st_mode) and inode_id(visible_new) == candidate_id
+                    visible_ok = (
+                        stat.S_ISREG(visible_new.st_mode)
+                        and inode_id(visible_new) == candidate_id
+                    )
                 except OSError:
                     pass
             if anchored_ok and visible_ok:
@@ -546,7 +573,11 @@ def migrate(old: str, new: str, config_home: str, home: str, token: str) -> None
                     "canonical-marker",
                 )
             except MarkerRemovalError as rollback_error:
-                collision(old, new, f"publication postcondition failed; rollback failed: {rollback_error}")
+                collision(
+                    old,
+                    new,
+                    f"publication postcondition failed; rollback failed: {rollback_error}",
+                )
             collision(
                 old,
                 new,

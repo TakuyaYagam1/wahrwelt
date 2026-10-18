@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
 import ctypes
-from contextlib import contextmanager
 import errno
 import hashlib
 import os
@@ -8,7 +6,7 @@ import re
 import secrets
 import stat
 import sys
-
+from contextlib import contextmanager
 
 RENAME_NOREPLACE = 1
 STORE_MANAGED_PATHS = {
@@ -31,7 +29,9 @@ END4_APP_LINK_TYPES = {
     ".config/kdeglobals": "regular",
     ".local/share/konsole/Profile 1.profile": "regular",
 }
-SUPPORTED_PATHS = STORE_MANAGED_PATHS | STALE_END4_LINKS.keys() | END4_APP_LINK_TYPES.keys()
+SUPPORTED_PATHS = (
+    STORE_MANAGED_PATHS | STALE_END4_LINKS.keys() | END4_APP_LINK_TYPES.keys()
+)
 HISTORICAL_STORE = re.compile(
     r"^/nix/store/[0-9abcdfghijklmnpqrsvwxyz]{32}-home-manager-files/(.+)$"
 )
@@ -96,13 +96,21 @@ def normalized_absolute(path: str) -> str | None:
 def generation_candidates(generation: str, expected_relative: str) -> set[str]:
     if not generation:
         return set()
-    candidates = {os.path.normpath(os.path.join(generation, "home-files", expected_relative))}
+    candidates = {
+        os.path.normpath(os.path.join(generation, "home-files", expected_relative))
+    }
     if os.path.exists(generation):
         resolved = os.path.realpath(generation)
-        candidates.add(os.path.normpath(os.path.join(resolved, "home-files", expected_relative)))
+        candidates.add(
+            os.path.normpath(os.path.join(resolved, "home-files", expected_relative))
+        )
     home_files = os.path.join(generation, "home-files")
     if os.path.exists(home_files):
-        candidates.add(os.path.normpath(os.path.join(os.path.realpath(home_files), expected_relative)))
+        candidates.add(
+            os.path.normpath(
+                os.path.join(os.path.realpath(home_files), expected_relative)
+            )
+        )
     return candidates
 
 
@@ -115,10 +123,14 @@ def is_managed_target(
 ) -> bool:
     stale_end4 = STALE_END4_LINKS.get(expected_relative)
     if stale_end4 is not None:
-        return raw_target == os.path.join(os.path.normpath(recovery_parent), stale_end4[1])
+        return raw_target == os.path.join(
+            os.path.normpath(recovery_parent), stale_end4[1]
+        )
     clean = normalized_absolute(raw_target)
     if clean is None:
-        clean = normalized_absolute(os.path.join(os.path.dirname(display_path), raw_target))
+        clean = normalized_absolute(
+            os.path.join(os.path.dirname(display_path), raw_target)
+        )
     if clean is None:
         return False
     historical = HISTORICAL_STORE.fullmatch(clean)
@@ -146,7 +158,10 @@ def is_managed_target(
         return stat.S_ISREG(asset.st_mode)
     if historical is not None and historical.group(1) == expected_relative:
         return True
-    return any(clean in generation_candidates(generation, expected_relative) for generation in generations)
+    return any(
+        clean in generation_candidates(generation, expected_relative)
+        for generation in generations
+    )
 
 
 def is_expected_mutable_target(info: os.stat_result, expected_relative: str) -> bool:
@@ -201,7 +216,9 @@ def open_directory_beneath(root_fd: int, relative: str) -> int:
         raise
 
 
-def pin_nearest_existing_ancestor(path: str, target: str) -> tuple[int, os.stat_result, str, str]:
+def pin_nearest_existing_ancestor(
+    path: str, target: str
+) -> tuple[int, os.stat_result, str, str]:
     missing: list[str] = []
     ancestor = path
     while not os.path.lexists(ancestor):
@@ -246,7 +263,9 @@ def verify_absent_root(target: str, recovery_parent: str, fields: list[str]) -> 
     except OSError:
         ownership_collision(target)
     with closing_fd(ancestor_fd):
-        if inode_id(os.fstat(ancestor_fd)) != expected_ancestor or not visible_directory_matches(
+        if inode_id(
+            os.fstat(ancestor_fd)
+        ) != expected_ancestor or not visible_directory_matches(
             ancestor, expected_ancestor
         ):
             ownership_collision(target)
@@ -329,7 +348,11 @@ def target_coordinates(target: str, recovery_parent: str) -> tuple[str, str, str
         relative = os.path.relpath(target_path, root_path)
     except ValueError:
         ownership_collision(target)
-    if relative == ".." or relative.startswith(".." + os.sep) or os.path.isabs(relative):
+    if (
+        relative == ".."
+        or relative.startswith(".." + os.sep)
+        or os.path.isabs(relative)
+    ):
         ownership_collision(target)
     target_name = os.path.basename(relative)
     relative_parent = os.path.dirname(relative)
@@ -344,7 +367,9 @@ def check_with_token(
     generations: tuple[str, str],
     recovery_parent: str,
 ) -> None:
-    root_path, _, relative_parent, target_name = target_coordinates(target, recovery_parent)
+    root_path, _, relative_parent, target_name = target_coordinates(
+        target, recovery_parent
+    )
     if not os.path.lexists(root_path):
         if os.path.lexists(target):
             ownership_collision(target)
@@ -368,7 +393,9 @@ def check_with_token(
     try:
         root_fd = open_ordinary_directory(root_path)
     except OSError:
-        fail(f"Wahrwelt legacy link recovery parent is not an ordinary directory: {root_path}")
+        fail(
+            f"Wahrwelt legacy link recovery parent is not an ordinary directory: {root_path}"
+        )
     with closing_fd(root_fd):
         root_info = os.fstat(root_fd)
         root_id = inode_id(root_info)
@@ -386,7 +413,9 @@ def check_with_token(
         with closing_fd(parent_fd):
             parent_info = os.fstat(parent_fd)
             try:
-                link_info = os.stat(target_name, dir_fd=parent_fd, follow_symlinks=False)
+                link_info = os.stat(
+                    target_name, dir_fd=parent_fd, follow_symlinks=False
+                )
             except FileNotFoundError:
                 if not visible_directory_matches(root_path, root_id):
                     fail(f"Wahrwelt legacy link recovery parent changed: {root_path}")
@@ -433,7 +462,9 @@ def quarantine(
     recovery_parent: str,
     token: str,
 ) -> None:
-    root_path, _, relative_parent, target_name = target_coordinates(target, recovery_parent)
+    root_path, _, relative_parent, target_name = target_coordinates(
+        target, recovery_parent
+    )
     fields = token.split("|")
     if fields and fields[0] == "absent-root":
         verify_absent_root(target, root_path, fields)
@@ -470,11 +501,17 @@ def quarantine(
     try:
         root_fd = open_ordinary_directory(root_path)
     except OSError:
-        fail(f"Wahrwelt legacy link recovery parent is not an ordinary directory: {root_path}")
+        fail(
+            f"Wahrwelt legacy link recovery parent is not an ordinary directory: {root_path}"
+        )
     with closing_fd(root_fd):
         root_id = inode_id(os.fstat(root_fd))
-        if root_id != expected_root or not visible_directory_matches(root_path, root_id):
-            fail(f"Wahrwelt legacy link recovery parent changed after preflight: {root_path}")
+        if root_id != expected_root or not visible_directory_matches(
+            root_path, root_id
+        ):
+            fail(
+                f"Wahrwelt legacy link recovery parent changed after preflight: {root_path}"
+            )
         if fields[0] == "absent-parent":
             try:
                 unexpected_parent = open_directory_beneath(root_fd, relative_parent)
@@ -528,18 +565,25 @@ def quarantine(
                 recovery_parent,
             )
             before_id = inode_id(before_info)
-            if before_id != expected_link or target_digest(before_target) != expected_target_digest:
+            if (
+                before_id != expected_link
+                or target_digest(before_target) != expected_target_digest
+            ):
                 ownership_collision(target)
 
             for _ in range(128):
-                recovery_name = ".wahrwelt-migration-recovery-links-" + secrets.token_hex(12)
+                recovery_name = (
+                    ".wahrwelt-migration-recovery-links-" + secrets.token_hex(12)
+                )
                 try:
                     os.mkdir(recovery_name, 0o700, dir_fd=root_fd)
                     break
                 except FileExistsError:
                     continue
             else:
-                fail(f"Wahrwelt could not allocate legacy link recovery beneath {root_path}")
+                fail(
+                    f"Wahrwelt could not allocate legacy link recovery beneath {root_path}"
+                )
             recovery_path = os.path.join(root_path, recovery_name)
             recovery_fd = os.open(
                 recovery_name,
@@ -557,9 +601,15 @@ def quarantine(
                 moved_ok = False
                 moved_info = None
                 try:
-                    moved_info = os.stat("legacy-link", dir_fd=recovery_fd, follow_symlinks=False)
+                    moved_info = os.stat(
+                        "legacy-link", dir_fd=recovery_fd, follow_symlinks=False
+                    )
                     moved_target = os.readlink("legacy-link", dir_fd=recovery_fd)
-                    moved_ok = stat.S_ISLNK(moved_info.st_mode) and inode_id(moved_info) == before_id and moved_target == before_target
+                    moved_ok = (
+                        stat.S_ISLNK(moved_info.st_mode)
+                        and inode_id(moved_info) == before_id
+                        and moved_target == before_target
+                    )
                 except OSError:
                     pass
 
@@ -573,9 +623,14 @@ def quarantine(
                 except OSError:
                     pass
                 try:
-                    recovery_visible = inode_id(
-                        os.stat(recovery_name, dir_fd=root_fd, follow_symlinks=False)
-                    ) == recovery_id
+                    recovery_visible = (
+                        inode_id(
+                            os.stat(
+                                recovery_name, dir_fd=root_fd, follow_symlinks=False
+                            )
+                        )
+                        == recovery_id
+                    )
                 except OSError:
                     recovery_visible = False
                 publication_ok = (
@@ -594,7 +649,9 @@ def quarantine(
                 except FileNotFoundError:
                     if moved_info is not None:
                         try:
-                            rename_noreplace(recovery_fd, "legacy-link", parent_fd, target_name)
+                            rename_noreplace(
+                                recovery_fd, "legacy-link", parent_fd, target_name
+                            )
                             restored_info = os.stat(
                                 target_name,
                                 dir_fd=parent_fd,
@@ -609,14 +666,23 @@ def quarantine(
                                 recovery_absent = False
                             except FileNotFoundError:
                                 recovery_absent = True
-                            restored = inode_id(restored_info) == inode_id(moved_info) and recovery_absent
+                            restored = (
+                                inode_id(restored_info) == inode_id(moved_info)
+                                and recovery_absent
+                            )
                         except OSError:
                             restored = False
                 if restored:
                     if moved_ok:
-                        fail(f"Wahrwelt legacy link parent changed; original link restored in pinned parent: {target}")
-                    fail(f"Wahrwelt legacy link changed during quarantine; concurrent replacement restored: {target}")
-                fail(f"Wahrwelt legacy link parent changed; recovery retained in pinned inode at {recovery_path}")
+                        fail(
+                            f"Wahrwelt legacy link parent changed; original link restored in pinned parent: {target}"
+                        )
+                    fail(
+                        f"Wahrwelt legacy link changed during quarantine; concurrent replacement restored: {target}"
+                    )
+                fail(
+                    f"Wahrwelt legacy link parent changed; recovery retained in pinned inode at {recovery_path}"
+                )
 
 
 def main() -> None:
@@ -625,9 +691,14 @@ def main() -> None:
             f"usage: {sys.argv[0]} check TARGET EXPECTED_RELATIVE OLD_GENERATION CURRENT_GENERATION RECOVERY_PARENT | quarantine TARGET EXPECTED_RELATIVE OLD_GENERATION CURRENT_GENERATION RECOVERY_PARENT TOKEN",
             2,
         )
-    command_name, target, expected_relative, old_generation, current_generation = sys.argv[1:6]
+    command_name, target, expected_relative, old_generation, current_generation = (
+        sys.argv[1:6]
+    )
     if expected_relative not in SUPPORTED_PATHS:
-        fail(f"Wahrwelt legacy link guard received an unsupported managed path: {expected_relative}", 2)
+        fail(
+            f"Wahrwelt legacy link guard received an unsupported managed path: {expected_relative}",
+            2,
+        )
     stale_end4 = STALE_END4_LINKS.get(expected_relative)
     if stale_end4 is not None:
         expected_public = os.path.join(os.path.normpath(sys.argv[6]), stale_end4[0])
@@ -637,7 +708,12 @@ def main() -> None:
     if command_name == "check" and len(sys.argv) == 7 and sys.argv[6]:
         check_with_token(target, expected_relative, generations, sys.argv[6])
         return
-    if command_name != "quarantine" or len(sys.argv) != 8 or not sys.argv[6] or not sys.argv[7]:
+    if (
+        command_name != "quarantine"
+        or len(sys.argv) != 8
+        or not sys.argv[6]
+        or not sys.argv[7]
+    ):
         fail("Wahrwelt legacy link guard received an invalid command", 2)
     quarantine(target, expected_relative, generations, sys.argv[6], sys.argv[7])
 

@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import random
@@ -5,20 +6,6 @@ import subprocess
 from argparse import Namespace
 from pathlib import Path
 from typing import cast
-
-from materialyoucolor.hct import Hct
-from materialyoucolor.utils.color_utils import argb_from_rgb
-from PIL import Image
-
-from caelestia.utils.video_cache import (
-    VALID_WALLPAPER_EXTENSIONS,
-    VIDEO_EXTENSIONS,
-    classify_path,
-    is_animated_image,
-    is_animated_webp,
-    is_video_file,
-    should_regenerate_cache,
-)
 
 from caelestia.utils.colourfulness import get_variant
 from caelestia.utils.hypr import message
@@ -33,6 +20,16 @@ from caelestia.utils.paths import (
 )
 from caelestia.utils.scheme import Scheme, get_scheme
 from caelestia.utils.theme import apply_colours
+from caelestia.utils.video_cache import (
+    VALID_WALLPAPER_EXTENSIONS,
+    is_animated_image,
+    is_animated_webp,
+    is_video_file,
+    should_regenerate_cache,
+)
+from materialyoucolor.hct import Hct
+from materialyoucolor.utils.color_utils import argb_from_rgb
+from PIL import Image
 
 
 def is_valid_image(path: Path) -> bool:
@@ -40,7 +37,9 @@ def is_valid_image(path: Path) -> bool:
 
 
 def is_live_wallpaper(path: Path) -> bool:
-    return is_video_file(path) or path.suffix.lower() == ".gif" or is_animated_webp(path)
+    return (
+        is_video_file(path) or path.suffix.lower() == ".gif" or is_animated_webp(path)
+    )
 
 
 def check_wall(wall: Path, filter_size: tuple[int, int], threshold: float) -> bool:
@@ -49,7 +48,10 @@ def check_wall(wall: Path, filter_size: tuple[int, int], threshold: float) -> bo
     try:
         with Image.open(wall) as img:
             width, height = img.size
-            return width >= filter_size[0] * threshold and height >= filter_size[1] * threshold
+            return (
+                width >= filter_size[0] * threshold
+                and height >= filter_size[1] * threshold
+            )
     except (OSError, ValueError):
         return False
 
@@ -57,7 +59,7 @@ def check_wall(wall: Path, filter_size: tuple[int, int], threshold: float) -> bo
 def get_wallpaper() -> str | None:
     try:
         return wallpaper_path_path.read_text()
-    except IOError:
+    except OSError:
         return None
 
 
@@ -86,10 +88,8 @@ def get_thumb(wall: Path, cache: Path) -> Path:
     thumb.parent.mkdir(parents=True, exist_ok=True)
 
     previous = None
-    try:
+    with contextlib.suppress(OSError):
         previous = wallpaper_thumbnail_path.resolve(strict=True)
-    except OSError:
-        pass
 
     temporary = thumb.with_suffix(".tmp.jpg")
     temporary.unlink(missing_ok=True)
@@ -135,7 +135,9 @@ def get_thumb(wall: Path, cache: Path) -> Path:
         if previous and previous.exists():
             return previous
         if not thumb.exists():
-            Image.new("RGB", (128, 128), color="black").save(thumb, "JPEG", quality=70, optimize=True)
+            Image.new("RGB", (128, 128), color="black").save(
+                thumb, "JPEG", quality=70, optimize=True
+            )
 
     return thumb
 
@@ -145,7 +147,7 @@ def get_smart_opts(wall: Path, cache: Path) -> dict:
 
     try:
         return json.loads(opts_cache.read_text())
-    except (IOError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
         pass
 
     opts = {"mode": "dark", "variant": "tonalSpot"}
@@ -265,6 +267,7 @@ def set_wallpaper(wall: Path, no_smart: bool) -> None:
         subprocess.run(
             post_hook,
             shell=True,
+            check=False,
             env={
                 **os.environ,
                 "WALLPAPER_PATH": str(wall),

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """end4 QuickShell config patcher.
 
 Transforms the upstream end-4 illogical-impulse QuickShell sources so they
@@ -9,8 +8,9 @@ fails loudly if end-4 renames or reorders a snippet.
 Invoked from Linux/NixOS/home/end4/patches/quickshell.nix inside a runCommand
 derivation; it never runs at activation time.
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -25,8 +25,8 @@ def patch_hyprland_xkb(root: Path) -> None:
 
     text = replace_once(
         text,
-        '    property bool needsLayoutRefresh: false\n',
-        '    property bool needsLayoutRefresh: false\n'
+        "    property bool needsLayoutRefresh: false\n",
+        "    property bool needsLayoutRefresh: false\n"
         '    property string mainKeyboardName: ""\n',
         "HyprlandXkb needsLayoutRefresh property",
     )
@@ -204,12 +204,15 @@ def patch_cheatsheet_tabs(root: Path) -> None:
 
     text = replace_once(text, old_tabs, new_tabs, "cheatsheet tab list")
     text = replace_once(text, old_pages, new_pages, "cheatsheet pages")
-    text = text.replace("currentIndex: Persistent.states.cheatsheet.tabIndex", "currentIndex: 0", 1)
+    text = text.replace(
+        "currentIndex: Persistent.states.cheatsheet.tabIndex", "currentIndex: 0", 1
+    )
     path.write_text(text)
 
 
 def transparency_controls_qml(switch_block: str) -> str:
-    qml = """
+    qml = (
+        """
         function applyWindowTransparency(transparency) {
             const inactiveOpacity = Math.max(0.05, Math.min(1.0, 1.0 - transparency)).toFixed(3);
             Quickshell.execDetached(["bash", "-c",
@@ -220,7 +223,9 @@ def transparency_controls_qml(switch_block: str) -> str:
             ]);
         }
 
-""" + switch_block + """
+"""
+        + switch_block
+        + """
 
         ConfigSlider {
             buttonIcon: "layers"
@@ -252,6 +257,7 @@ def transparency_controls_qml(switch_block: str) -> str:
                 Config.options.appearance.transparency.contentTransparency = value / 100;
             }
         }"""
+    )
     return qml.replace(
         "Config.options.appearance.transparency.enable = checked;",
         "Config.options.appearance.transparency.enable = checked;\n"
@@ -483,7 +489,9 @@ def patch_vertical_bar(root: Path) -> None:
             """
 
     if "Config.options.bar.utilButtons.showScreenSnip" not in text:
-        text = replace_once(text, needle, needle + insert, "vertical bar insertion point")
+        text = replace_once(
+            text, needle, needle + insert, "vertical bar insertion point"
+        )
 
     path.write_text(text)
 

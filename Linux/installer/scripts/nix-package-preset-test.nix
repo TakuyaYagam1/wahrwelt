@@ -194,4 +194,11 @@ assert !minimalHome.config.programs.neovim.enable;
 assert !minimalHome.config.programs.btop.enable;
 assert desktopHome.config.programs.neovim.enable;
 assert desktopHome.config.programs.btop.enable;
+assert !(minimalHome.config.programs ? zen-browser);
+assert desktopHome.config.programs.zen-browser.enable;
+assert desktopHome.config.programs.zen-browser.profiles.default.sine.enable;
+assert desktopHome.config.programs.zen-browser.env.MOZ_LEGACY_PROFILES == "1";
+assert
+  !desktopHome.config.home.file."${desktopHome.config.programs.zen-browser.configPath}/profiles.ini".enable;
+assert mimeDefaults."x-scheme-handler/https" == [ "zen-beta.desktop" ];
 "ok"
