@@ -165,6 +165,27 @@ func TestFlakeNixUsesIndependentThinWahrweltWrapper(t *testing.T) {
 	}
 }
 
+func TestFlakeNixUsesZenHomeManagerInput(t *testing.T) {
+	for _, preset := range config.PackagePresets {
+		t.Run(preset, func(t *testing.T) {
+			state := config.Default()
+			state.Packages.Preset = preset
+			out, err := FlakeNix(state, LockModeIndependent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := `zen-browser = {
+      url = "github:0xc000022070/zen-browser-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };`
+			if got := strings.Contains(out, want); got != (preset != "minimal") {
+				t.Fatalf("preset %q: Zen Home Manager input present=%v", preset, got)
+			}
+		})
+	}
+}
+
 func TestFlakeNixSupportsManagedThinWahrweltWrapper(t *testing.T) {
 	state := config.Default()
 	state.Host.Hostname = "workstation"
