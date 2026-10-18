@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Index End4 wallpaper media without relying on filename suffixes alone."""
 
 from __future__ import annotations
