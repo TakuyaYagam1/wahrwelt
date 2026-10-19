@@ -31,10 +31,9 @@ in
           format = "{$2}{release>22}{$1} │";
         }
         {
-          type = "command";
+          type = "uptime";
           key = "│   uptime";
-          text = "uptime -p | cut -d ' ' -f 2-";
-          format = "{>22} │";
+          format = "{formatted>22} │";
         }
         {
           type = "shell";
