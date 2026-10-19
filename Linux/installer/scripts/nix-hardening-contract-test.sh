@@ -138,12 +138,16 @@ WAHRWELT_NIXOS_DIR="$nixos_dir" nix build \
       }).mutableSeedHelper
     ' >/dev/null
 
+# Keep sibling dots and installer directories in the flake source snapshot.
 # The single-quoted expression intentionally preserves Nix interpolation.
 # shellcheck disable=SC2016
-WAHRWELT_NIXOS_DIR="$nixos_dir" nix eval --no-write-lock-file --impure --raw --expr '
+WAHRWELT_NIXOS_DIR="$nixos_dir" \
+WAHRWELT_REPO_ROOT="$repo_root" \
+nix eval --no-write-lock-file --impure --raw --expr '
   let
     nixosDir = builtins.getEnv "WAHRWELT_NIXOS_DIR";
-    flake = builtins.getFlake ("path:" + nixosDir);
+    repoRoot = builtins.getEnv "WAHRWELT_REPO_ROOT";
+    flake = builtins.getFlake ("path:" + repoRoot + "?dir=Linux/NixOS");
     defaults = import (nixosDir + "/hosts/NixOS/host-vars.nix");
     username = defaults.user.username;
     hostname = defaults.host.hostname;

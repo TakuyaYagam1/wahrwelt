@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if ! command -v rg >/dev/null 2>&1; then
+    printf 'FAIL nix brand migration v1_to_v2 requires rg (ripgrep)\n' >&2
+    exit 1
+fi
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 helper="$repo_root/Linux/NixOS/system/migrations/v1_to_v2/brand.py"
 codex_tmp="${CODEX_TMP_DIR:-$HOME/.codex/.tmp}"

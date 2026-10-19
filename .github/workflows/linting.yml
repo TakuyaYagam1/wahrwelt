@@ -49,6 +49,7 @@ jobs:
             nixpkgs#lua \
             nixpkgs#neovim \
             nixpkgs#python3 \
+            nixpkgs#ripgrep \
             nixpkgs#nix \
             nixpkgs#util-linux \
             nixpkgs#shellcheck \
@@ -59,7 +60,7 @@ jobs:
             /nix/store/*) ;;
             *) echo "::error::Tool profile did not resolve into the Nix store"; exit 1 ;;
           esac
-          for tool in actionlint fish jq mv nix nix-store shellcheck unshare; do
+          for tool in actionlint fish jq mv nix nix-store rg shellcheck unshare; do
             test -x "$profile_store/bin/$tool" || {
               echo "::error::Missing CI tool: $tool"
               exit 1
@@ -76,7 +77,7 @@ jobs:
             /nix/store/*/bin) ;;
             *) echo "::error::Tool profile output is not an immutable store bin"; exit 1 ;;
           esac
-          for tool in actionlint fish jq mv nix nix-store shellcheck unshare; do
+          for tool in actionlint fish jq mv nix nix-store rg shellcheck unshare; do
             test -x "$CI_PROFILE_BIN/$tool" || {
               echo "::error::Missing pinned CI tool: $tool"
               exit 1
