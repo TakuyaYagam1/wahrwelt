@@ -986,9 +986,28 @@ checks for concurrent changes and retains a backup for recovery. Changes to
 the package preset, Secure Boot, or other saved settings still go through
 **Apply**, which uses the same reconciliation for the wrapper.
 
-Garbage collection:
+Routine garbage collection in Fish:
 
 ```bash
-sudo nix-collect-garbage -d
-sudo nixos-rebuild boot --flake /etc/nixos#NixOS
+cleanup
 ```
+
+`cleanup` runs `nixy gc`. It removes user and system generations older than
+`wahrwelt.nix.gcRetention` (14 days by default), keeps the current generations,
+and preserves available build dependencies of retained store paths. Store
+optimisation deduplicates identical files. Automatic garbage collection also
+preserves build dependencies by default through `nix.settings.keep-outputs`.
+This uses more disk space but avoids repeatedly rebuilding intermediate outputs,
+such as Fish completions. It does not restore cache that was already deleted.
+
+For a full cleanup:
+
+```bash
+clean-full
+```
+
+`clean-full` runs `nixy gc-full`. It deletes old user and system generations
+and collects unused build outputs with `keep-outputs` disabled for that run.
+Current generations and other GC roots remain protected. Old generations are
+no longer available for rollback, and later builds may download or rebuild
+their dependencies. Neither command updates packages or switches the system.

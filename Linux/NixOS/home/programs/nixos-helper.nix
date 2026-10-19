@@ -1,5 +1,6 @@
 {
   wahrwelt,
+  lib,
   pkgs,
   inputs,
   ...
@@ -53,13 +54,18 @@ let
       }
 
       gc() {
-        echo "==> system gc"
-        sudo nix-collect-garbage -d
-        echo "==> user gc"
-        nix-collect-garbage -d
-        echo "==> store gc + optimise"
-        nix-store --gc
-        nix-store --optimise
+        local retention=${lib.escapeShellArg (wahrwelt.nix.gcRetention or "14d")}
+        echo "==> keeping build cache and generations newer than $retention"
+        nix-collect-garbage --delete-older-than "$retention" --option keep-derivations true --option keep-outputs true
+        sudo nix-collect-garbage --delete-older-than "$retention" --option keep-derivations true --option keep-outputs true
+        sudo nix-store --optimise
+      }
+
+      gc_full() {
+        echo "==> removing old generations and unused build cache"
+        nix-collect-garbage --delete-old --option keep-derivations true --option keep-outputs false
+        sudo nix-collect-garbage --delete-old --option keep-derivations true --option keep-outputs false
+        sudo nix-store --optimise
       }
 
       listgen() {
@@ -104,6 +110,7 @@ let
         update)  update ;;
         lock)    lock_cmd ;;
         gc)      gc ;;
+        gc-full) gc_full ;;
         boot)    boot_cmd ;;
         listgen) listgen ;;
         diff)    diff_cmd ;;

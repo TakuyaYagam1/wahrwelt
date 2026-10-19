@@ -1,4 +1,4 @@
-{ config, ... }:
+{ config, lib, ... }:
 
 {
   nix = {
@@ -47,6 +47,10 @@
       max-jobs = config.wahrwelt.nix.maxJobs;
       cores = config.wahrwelt.nix.cores;
       auto-optimise-store = config.wahrwelt.host.autoOptimiseStore;
+      # Retain build dependencies for surviving generations, including during automatic GC.
+      # clean-full overrides keep-outputs for a single collection.
+      keep-derivations = lib.mkDefault true;
+      keep-outputs = lib.mkDefault true;
       warn-dirty = false;
     };
 

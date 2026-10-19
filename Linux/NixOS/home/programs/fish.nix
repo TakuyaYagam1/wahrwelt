@@ -19,7 +19,8 @@ _:
       la = "eza -a --icons --group-directories-first";
       lt = "eza --tree --level=2 --icons";
 
-      cleanup = "sudo nix-collect-garbage -d && nix-collect-garbage && nix store optimise && sudo nix-store --gc --print-dead && sudo nix-store --gc";
+      cleanup = "nixy gc";
+      clean-full = "nixy gc-full";
       optimize = "sudo nix-store --optimise";
       logout = "systemctl restart display-manager.service";
       suspend = "systemctl suspend";
