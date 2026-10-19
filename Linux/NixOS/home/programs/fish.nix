@@ -1,6 +1,42 @@
-_:
+{
+  config ? { },
+  ...
+}:
 
 {
+  imports = [ ../lib/managed-config.nix ];
+
+  wahrwelt.mutableFiles = {
+    "fish/user/config.fish" = {
+      source = ./fish/user-config.fish;
+      policy = "seed";
+      validator = "fish";
+    };
+    "fish/user/functions/.keep" = {
+      source = ./fish/keep;
+      policy = "seed";
+      validator = "none";
+    };
+    "fish/user/completions/.keep" = {
+      source = ./fish/keep;
+      policy = "seed";
+      validator = "none";
+    };
+  };
+
+  wahrwelt.guardedFiles = [
+    "fish/config.fish"
+  ]
+  ++ builtins.map (name: "fish/functions/${name}.fish") (
+    builtins.attrNames (config.programs.fish.functions or { })
+  )
+  ++ builtins.map (name: "fish/completions/${name}.fish") (
+    builtins.attrNames (config.programs.fish.completions or { })
+  )
+  ++ builtins.map (plugin: "fish/conf.d/plugin-${plugin.name}.fish") (
+    config.programs.fish.plugins or [ ]
+  );
+
   programs.fish = {
     enable = true;
 
@@ -11,6 +47,22 @@ _:
         /etc/profiles/per-user/$USER/bin \
         $HOME/.nix-profile/bin \
         /nix/var/nix/profiles/default/bin
+    '';
+
+    # conf.d runs before Home Manager's aliases and interactive defaults.
+    # This final hook lets personal configuration override those defaults.
+    shellInitLast = ''
+      set -l wahrwelt_fish_user_dir "$__fish_config_dir/user"
+      if not contains -- "$wahrwelt_fish_user_dir/functions" $fish_function_path
+        set --global --prepend fish_function_path "$wahrwelt_fish_user_dir/functions"
+      end
+      if not contains -- "$wahrwelt_fish_user_dir/completions" $fish_complete_path
+        set --global --prepend fish_complete_path "$wahrwelt_fish_user_dir/completions"
+      end
+
+      if test -f "$wahrwelt_fish_user_dir/config.fish"
+        source "$wahrwelt_fish_user_dir/config.fish"
+      end
     '';
 
     shellAliases = {

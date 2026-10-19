@@ -258,6 +258,14 @@ let
 
 in
 {
+  imports = [ ../lib/managed-config.nix ];
+
+  # The runtime adapter has its own migration/ownership check. Static defaults
+  # must also refuse edited replacements before Home Manager's forced links.
+  wahrwelt.guardedFiles = lib.filter (name: name != "hypr/user/hyprland.lua") (
+    builtins.attrNames (wahrweltHyprFiles // commonHyprFiles // hyprScriptFiles)
+  );
+
   xdg.configFile =
     hyprScriptFiles
     // stableEntrypointFiles

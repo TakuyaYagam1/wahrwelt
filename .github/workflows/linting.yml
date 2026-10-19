@@ -45,6 +45,10 @@ jobs:
             nixpkgs#actionlint \
             nixpkgs#coreutils \
             nixpkgs#fish \
+            nixpkgs#git \
+            nixpkgs#lua \
+            nixpkgs#neovim \
+            nixpkgs#python3 \
             nixpkgs#nix \
             nixpkgs#util-linux \
             nixpkgs#shellcheck \
@@ -114,6 +118,11 @@ jobs:
         env:
           CI_PROFILE_BIN: ${{ steps.tools.outputs.profile_bin }}
         run: PATH="$CI_PROFILE_BIN:$PATH" make -C Linux nix-shell-transition-build
+
+      - name: Check dotfile updates and user configuration layers
+        env:
+          CI_PROFILE_BIN: ${{ steps.tools.outputs.profile_bin }}
+        run: PATH="$CI_PROFILE_BIN:$PATH" make -C Linux test-dotfile-updates
 
       - name: Run linting
         env:

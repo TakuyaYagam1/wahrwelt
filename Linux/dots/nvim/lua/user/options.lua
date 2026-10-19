@@ -1,0 +1,2 @@
+-- Personal options, loaded after LazyVim and lua/config/options.lua.
+-- Example: vim.opt.relativenumber = false

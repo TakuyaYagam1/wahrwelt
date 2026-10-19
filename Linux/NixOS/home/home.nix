@@ -12,7 +12,6 @@
 let
   desktopOrMore = wahrweltLib.presets.desktopOrMore wahrwelt;
   developerOrMore = wahrweltLib.presets.developerOrMore wahrwelt;
-  wahrweltPkgs = pkgs.wahrwelt or (pkgs.mysetup or { });
   homeLibs = import ./lib { inherit lib pkgs; };
   avatarSource =
     if builtins.pathExists ./avatar.jpg then ./avatar.jpg else ../themes/sddm-theme/icons/logo.png;
@@ -42,6 +41,7 @@ let
   ]
   ++ lib.optionals desktopOrMore [ "btop/btop.conf" ];
   coreImports = [
+    ./lib/managed-config.nix
     inputs.stylix.homeModules.stylix
     ./stylix.nix
     ./theming.nix
@@ -49,6 +49,7 @@ let
     ./migrations/v1_to_v2/user-paths.nix
     ./programs/git.nix
     ./programs/fish.nix
+    ./programs/neovim.nix
     ./programs/shell-tools.nix
     ./programs/foot.nix
     ./programs/btop.nix
@@ -121,22 +122,6 @@ in
         ${seedWallpaperFiles}
       ''
     );
-  };
-
-  programs.neovim = lib.mkIf desktopOrMore {
-    enable = true;
-    package = wahrweltPkgs.neovim or pkgs.neovim;
-    withRuby = true;
-    withPython3 = true;
-    plugins = [
-      (pkgs.symlinkJoin {
-        name = "nvim-treesitter-parsers";
-        paths = pkgs.vimPlugins.nvim-treesitter.withAllGrammars.dependencies;
-      })
-    ];
-    initLua = ''
-      require("config.lazy")
-    '';
   };
 
   # Caelestia ships its own bar - block any upstream waybar enable.

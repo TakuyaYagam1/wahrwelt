@@ -1,0 +1,1 @@
+-- Personal autocmds, loaded after LazyVim and lua/config/autocmds.lua.

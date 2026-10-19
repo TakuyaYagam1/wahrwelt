@@ -1,0 +1,2 @@
+-- Personal keymaps, loaded after LazyVim and lua/config/keymaps.lua.
+-- Example: vim.keymap.set("n", "<leader>uw", "<cmd>set wrap!<cr>")

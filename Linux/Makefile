@@ -36,7 +36,7 @@ fmt-check: fmt-check-go fmt-check-nix fmt-check-shell fmt-check-lua fmt-check-py
 fmt: fmt-go fmt-nix fmt-shell fmt-lua fmt-python ## Apply formatting in place across go/nix/shell/lua/python
 
 .PHONY: test
-test: test-go test-hypr-integration ## Run all Go and Hypr integration test suites
+test: test-go test-hypr-integration test-dotfile-updates ## Run Go, Hypr and dotfile update tests
 
 .PHONY: vuln
 vuln: vuln-go ## Run all vulnerability scanners
@@ -119,6 +119,13 @@ nix-package-preset-contract: ## Check cumulative package presets and desktop fil
 	$(MAKE) -C $(INSTALLER_DIR) nix-package-preset-contract
 
 ##@ Dotfiles (shell, fish, lua, json)
+
+.PHONY: test-dotfile-updates
+test-dotfile-updates: ## Check preservation, user layers, and Home Manager activation ordering
+	@for tool in python3 git luac fish nvim nix; do command -v "$$tool" >/dev/null || exit 1; done
+	cd $(REPO_ROOT) && python3 Linux/NixOS/home/programs/tests/test-neovim.py
+	cd $(REPO_ROOT) && python3 Linux/NixOS/home/programs/tests/test-managed-config.py
+	cd $(INSTALLER_DIR) && go test -tags=integration ./internal/config ./internal/dots -run 'Test(FishUser|SyncNvim)' -count=1
 
 .PHONY: lint-shell
 lint-shell: lint-shell-bash lint-shell-fish ## shellcheck + fish -n
