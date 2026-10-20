@@ -93,4 +93,32 @@ rec {
       };
     });
   };
+
+  # aggregateModules needs a certificate for every external kernel module.
+  kernelModuleSigningOverlay = final: prev: {
+    kernelPackagesExtensions = (prev.kernelPackagesExtensions or [ ]) ++ [
+      (kernelFinal: kernelPrev: {
+        virtualbox = kernelPrev.virtualbox.overrideAttrs (old: {
+          makeFlags =
+            (old.makeFlags or [ ])
+            ++ prev.lib.optionals
+              (!(prev.lib.any (prev.lib.hasPrefix "cmd_sign=") (old.makeFlags or [ ])))
+              kernelFinal.kernelModuleMakeFlags;
+        });
+
+        vmware = kernelPrev.vmware.overrideAttrs (old: {
+          nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.kmodigest ];
+          # Sign after fixup, which strips uncompressed kernel modules.
+          postFixup = (old.postFixup or "") + ''
+            for module in "$out"/lib/modules/${kernelFinal.kernel.modDirVersion}/misc/*.ko; do
+              test -f "$module" || continue
+              if test ! -f "$module.cer"; then
+                kmodigest "$module"
+              fi
+            done
+          '';
+        });
+      })
+    ];
+  };
 }
