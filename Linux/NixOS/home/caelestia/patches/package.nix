@@ -25,6 +25,12 @@ let
   cli = baseCli.overridePythonAttrs (old: {
     nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ prev.patch ];
     propagatedBuildInputs = (old.propagatedBuildInputs or [ ]) ++ [ prev.ffmpeg ];
+    # Upstream sets this as a derivation attribute; structuredAttrs does not export it.
+    preBuild = (old.preBuild or "") + ''
+      export SETUPTOOLS_SCM_PRETEND_VERSION=${
+        prev.lib.escapeShellArg (toString (old.SETUPTOOLS_SCM_PRETEND_VERSION or "1"))
+      }
+    '';
     patchPhase = (old.patchPhase or "") + ''
       valid_image_old='    return path.is_file() and path.suffix in [".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"]'
       valid_image_new='    return path.is_file() and path.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"]'
