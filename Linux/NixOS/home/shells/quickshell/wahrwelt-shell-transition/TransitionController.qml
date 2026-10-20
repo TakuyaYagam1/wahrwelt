@@ -10,8 +10,8 @@ QtObject {
   property string state: ""
   property int captureWatchdogInterval: 0
   property int masterWatchdogInterval: 0
-  readonly property alias captureWatchdogRunning: captureWatchdog.running
-  readonly property alias masterWatchdogRunning: masterWatchdog.running
+  readonly property alias captureWatchdogRunning: captureTimer.running
+  readonly property alias masterWatchdogRunning: masterTimer.running
 
   signal exitRequested()
   signal coveredReady()
@@ -182,14 +182,14 @@ QtObject {
   }
 
   property Timer captureWatchdog: Timer {
-    id: captureWatchdog
+    id: captureTimer
     interval: controller.captureWatchdogInterval
     repeat: false
     onTriggered: controller.expireCaptureWatchdog()
   }
 
   property Timer masterWatchdog: Timer {
-    id: masterWatchdog
+    id: masterTimer
     interval: controller.masterWatchdogInterval
     repeat: false
     onTriggered: controller.expireMasterWatchdog()

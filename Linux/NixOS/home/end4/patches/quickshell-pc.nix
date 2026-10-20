@@ -55,9 +55,21 @@ let
           --replace-fail 'ffmpeg -v error' '${pkgs.ffmpeg}/bin/ffmpeg -v error' \
           --replace-fail 'magick "' '${pkgs.imagemagick}/bin/magick "'
 
-        substituteInPlace $out/modules/common/Appearance.qml \
-          --replace-fail 'property real contentTransparency: Config?.options.appearance.transparency.automatic ? autoContentTransparency : Config?.options.appearance.transparency.contentTransparency' \
-                         'property real contentTransparency: Config?.options.appearance.transparency.enable ? (Config?.options.appearance.transparency.automatic ? autoContentTransparency : Config?.options.appearance.transparency.contentTransparency) : 0'
+        appearance_qml="$out/modules/common/Appearance.qml"
+        content_expression='Config?.options.appearance.transparency.automatic ? autoContentTransparency : Config?.options.appearance.transparency.contentTransparency'
+        plain_line="property real contentTransparency: $content_expression"
+        glass_line="property real contentTransparency: Math.max(glassContentTransparency, $content_expression)"
+        if grep -Fxq "    $glass_line" "$appearance_qml"; then
+          expected_line="$glass_line"
+          replacement_line="property real contentTransparency: Config?.options.appearance.transparency.enable ? Math.max(glassContentTransparency, $content_expression) : 0"
+        elif grep -Fxq "    $plain_line" "$appearance_qml"; then
+          expected_line="$plain_line"
+          replacement_line="property real contentTransparency: Config?.options.appearance.transparency.enable ? ($content_expression) : 0"
+        else
+          echo "unsupported end4-pC contentTransparency expression" >&2
+          exit 1
+        fi
+        substituteInPlace "$appearance_qml" --replace-fail "$expected_line" "$replacement_line"
 
         substituteInPlace $out/services/SessionWarnings.qml \
           --replace-fail 'root.downloadRunning = (exitCode === 0);' \
