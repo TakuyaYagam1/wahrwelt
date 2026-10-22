@@ -2,6 +2,7 @@
   lib,
   buildNpmPackage,
   fetchFromGitHub,
+  fetchurl,
   python3,
   pkg-config,
   libsecret,
@@ -18,20 +19,24 @@
 let
   nodejs = nodejs_22;
   buildNpmPackage' = buildNpmPackage.override { inherit nodejs; };
+  swcBinding = fetchurl {
+    url = "https://registry.npmjs.org/@swc/core-linux-x64-gnu/-/core-linux-x64-gnu-1.16.20.tgz";
+    hash = "sha256-rnD1tTpShE9ihP80zgnY8xEgYHha1hg4pkj0JAOeu2o=";
+  };
 in
 buildNpmPackage' rec {
   pname = "omnirouter";
-  version = "3.8.51";
+  version = "3.8.52";
 
   src = fetchFromGitHub {
     owner = "diegosouzapw";
     repo = "OmniRoute";
-    rev = "v3.8.51";
-    hash = "sha256-ZYRjwynEw3cziFp8tM483QN96mDH0ZuHCFuhcJDwelA=";
+    rev = "v3.8.52";
+    hash = "sha256-k4+iy6aFWaFxVPcTStR4xNCJjw/UHeMqb5XnEvuqJZU=";
   };
 
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-YDkHaJp0RDTlwOT79DM+qxSQJ74UjiOFalDiG+nAgpE=";
+  npmDepsHash = "sha256-F4q2JTPy1L33U6Hlh99Ehd2Cjwo9CET46JlKb2sGSWE=";
 
   nativeBuildInputs = [
     python311
@@ -83,7 +88,12 @@ buildNpmPackage' rec {
     export CYPRESS_INSTALL_BINARY=0
     export HUSKY_SKIP_INSTALL=1
     npm rebuild better-sqlite3 --build-from-source
-    npm run build
+    ${lib.optionalString (stdenv.hostPlatform.system == "x86_64-linux") ''
+      # SWC 1.16.13 rejects the overflow UID on Nix's sandbox root.
+      tar -xOzf ${swcBinding} package/swc.linux-x64-gnu.node \
+        > node_modules/@swc/core-linux-x64-gnu/swc.linux-x64-gnu.node
+    ''}
+    SWC_NATIVE_BINDING_CACHE=0 npm run build
 
     # Next.js preserves this npm bin link as an absolute build-time path.
     semverBin=.build/next/standalone/node_modules/global-agent/node_modules/.bin/semver
