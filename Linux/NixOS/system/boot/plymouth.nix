@@ -47,8 +47,6 @@ in
       themePackages = [ plymouthTheme ];
     };
 
-    initrd.systemd.enable = true;
-
     kernelParams = [
       "quiet"
       "splash"
