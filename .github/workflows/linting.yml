@@ -32,7 +32,7 @@ jobs:
           cache-dependency-path: Linux/installer/go.sum
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v31.11.2
+        uses: cachix/install-nix-action@v31.11.3
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
