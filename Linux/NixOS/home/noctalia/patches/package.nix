@@ -66,7 +66,7 @@ let
 
   addV5Checks = old: {
     patches = (old.patches or [ ]) ++ [
-      (patchRoot + /v5.patch)
+      (if pkgs.lib.versionAtLeast old.version "5.4.0" then patchRoot + /v5.patch else patchRoot + /v5.3.patch)
       (patchRoot + /v5-lockscreen-video.patch)
     ];
     patchFlags = (old.patchFlags or [ "-p1" ]) ++ [ "--fuzz=0" ];
