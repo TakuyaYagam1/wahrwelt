@@ -58,16 +58,13 @@
        ui::input({
            .out = &m_filterInput,
            .placeholder = i18n::tr("wallpaper.panel.filter-placeholder"),
-@@ -879,6 +902,9 @@
-   if (m_favoritePaletteDetailButton != nullptr) {
-     m_favoritePaletteDetailButton->setSurfaceOpacity(opacity);
-   }
+@@ -858,3 +881,6 @@
+ void WallpaperPanel::onPanelCardOpacityChanged(float opacity) {
 +  if (m_mediaFilter != nullptr) {
 +    m_mediaFilter->setSurfaceOpacity(opacity);
 +  }
- }
-
- void WallpaperPanel::onOpen(std::string_view /*context*/) {
+   if (m_filterInput != nullptr) {
+     m_filterInput->setSurfaceOpacity(opacity);
 @@ -1162,6 +1188,15 @@
      entry.absPath = std::filesystem::path(favorite.path);
      entry.name = displayName;
@@ -112,14 +109,11 @@
    WallpaperPanel(
        WaylandConnection* wayland, ConfigService* config, ThumbnailService* thumbnails, WallpaperScanner* scanner,
        noctalia::theme::ThemeService* themeService = nullptr
-@@ -133,6 +139,7 @@
+@@ -132,3 +138,4 @@
    Button* m_backButton = nullptr;
++  Segmented* m_mediaFilter = nullptr;
    Segmented* m_favoriteThemeSegmented = nullptr;
    Segmented* m_favoritePaletteSourceSegmented = nullptr;
-+  Segmented* m_mediaFilter = nullptr;
-   Button* m_favoritePaletteDetailButton = nullptr;
-   Select* m_monitorSelect = nullptr;
-   Input* m_filterInput = nullptr;
 @@ -167,6 +174,7 @@
    bool m_showNames = true;
    bool m_scanPending = false;
@@ -379,14 +373,11 @@
    instance->outputName = output.name;
 --- a/src/shell/wallpaper/wallpaper.h
 +++ b/src/shell/wallpaper/wallpaper.h
-@@ -4,6 +4,7 @@
- #include "render/core/shared_texture_cache.h"
+@@ -5,3 +5,4 @@
  #include "render/core/wallpaper_types.h"
- #include "shell/wallpaper/wallpaper_shuffle_state.h"
 +#include "shell/wallpaper/live_wallpaper_controller.h"
+ #include "shell/wallpaper/wallpaper_shuffle_state.h"
  #include "ui/signal.h"
-
- #include <chrono>
 @@ -92,6 +93,7 @@
    void applyResolvedWallpaper(const std::optional<std::string>& connector, const std::string& resolvedPath);
    void reload();
