@@ -59,8 +59,8 @@
            .out = &m_filterInput,
            .placeholder = i18n::tr("wallpaper.panel.filter-placeholder"),
 @@ -879,6 +902,9 @@
-   if (m_favoritePaletteDetailSelect != nullptr) {
-     m_favoritePaletteDetailSelect->setSurfaceOpacity(opacity);
+   if (m_favoritePaletteDetailButton != nullptr) {
+     m_favoritePaletteDetailButton->setSurfaceOpacity(opacity);
    }
 +  if (m_mediaFilter != nullptr) {
 +    m_mediaFilter->setSurfaceOpacity(opacity);
@@ -117,7 +117,7 @@
    Segmented* m_favoriteThemeSegmented = nullptr;
    Segmented* m_favoritePaletteSourceSegmented = nullptr;
 +  Segmented* m_mediaFilter = nullptr;
-   Select* m_favoritePaletteDetailSelect = nullptr;
+   Button* m_favoritePaletteDetailButton = nullptr;
    Select* m_monitorSelect = nullptr;
    Input* m_filterInput = nullptr;
 @@ -167,6 +174,7 @@
@@ -386,7 +386,7 @@
 +#include "shell/wallpaper/live_wallpaper_controller.h"
  #include "ui/signal.h"
 
- #include <cstdint>
+ #include <chrono>
 @@ -92,6 +93,7 @@
    void applyResolvedWallpaper(const std::optional<std::string>& connector, const std::string& resolvedPath);
    void reload();

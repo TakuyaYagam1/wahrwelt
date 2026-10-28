@@ -51,7 +51,7 @@
         libxcb-render-util
         libxcb-image
         libxcb-cursor
-        pcre
+        pcre2
         pulseaudio
         dbus
         expat
