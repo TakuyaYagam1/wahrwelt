@@ -333,6 +333,50 @@ Item {
         ):
             execute_update_functions("")
 
+    def test_current_upstream_system_update_is_replaced(self) -> None:
+        current = SHARED_UPDATER.replace(
+            '"yay -Syu --combinedupgrade=false"',
+            '"if type -q yay; yay -Syu --combinedupgrade=false; else if type -q paru; paru -Syu; else; sudo pacman -Syu; end"',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            service = write_file(root, "services/DotsUpdater.qml", current)
+            write_file(
+                root,
+                "modules/ii/settings/pages/About.qml",
+                "function runSystemUpdate() { DotsUpdater.runSystemUpdate() }\n"
+                "function runUpdateDots() { DotsUpdater.runUpdateDots() }\n",
+            )
+            write_file(
+                root,
+                "modules/ii/settings/DashboardHomePage.qml",
+                "DotsUpdater.runSystemUpdate()\nDotsUpdater.runUpdateDots()\n",
+            )
+
+            QUICKSHELL_PC.patch_dots_updater(root, UPDATER_NOTICE)
+
+            self.assertEqual(
+                execute_update_functions(service.read_text())["detached"],
+                [
+                    ["foot", "nixos-update"],
+                    ["notify-send", "Wahrwelt", UPDATER_NOTICE],
+                ],
+            )
+
+    def test_current_updates_count_command_is_replaced(self) -> None:
+        current = updates_count_source().replace(
+            '"yay -Syu --combinedupgrade=false"',
+            '"if type -q yay; yay -Syu --combinedupgrade=false; else if type -q paru; paru -Syu; else; sudo pacman -Syu; end"',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bar = write_file(root, "modules/ii/bar/UpdatesCount.qml", current)
+
+            QUICKSHELL_PC.patch_updates_count(root)
+
+            self.assertIn('command: ["foot", "nixos-update"]', bar.read_text())
+            self.assertNotIn("pacman -Syu", bar.read_text())
+
     def test_unrecognized_shared_updater_is_rejected_without_writing(self) -> None:
         malformed_sources = (
             SHARED_UPDATER.replace(

@@ -104,6 +104,11 @@ UPSTREAM_SYSTEM_UPDATE = """\
     }
 """
 
+UPSTREAM_SYSTEM_UPDATE_WITH_FALLBACKS = UPSTREAM_SYSTEM_UPDATE.replace(
+    '"yay -Syu --combinedupgrade=false"',
+    '"if type -q yay; yay -Syu --combinedupgrade=false; else if type -q paru; paru -Syu; else; sudo pacman -Syu; end"',
+)
+
 UPSTREAM_DOTS_UPDATE = """\
     function runUpdateDots() {
         const updateScript = `
@@ -221,8 +226,9 @@ def patch_dots_updater(root: Path, updater_notice: str) -> None:
         raise SystemExit(
             "unrecognized end4-pC DotsUpdater: updater functions are reordered"
         )
-    if normalized_source(text[system_start:system_end]) != normalized_source(
-        UPSTREAM_SYSTEM_UPDATE
+    if normalized_source(text[system_start:system_end]) not in (
+        normalized_source(UPSTREAM_SYSTEM_UPDATE),
+        normalized_source(UPSTREAM_SYSTEM_UPDATE_WITH_FALLBACKS),
     ):
         raise SystemExit(
             "unrecognized end4-pC DotsUpdater: runSystemUpdate implementation changed"
@@ -274,10 +280,15 @@ def patch_updates_count(root: Path) -> None:
             "fish", "-i", "-l", "-c",
             "yay -Syu --combinedupgrade=false"
         ]"""
+    old_with_fallbacks = old.replace(
+        '"yay -Syu --combinedupgrade=false"',
+        '"if type -q yay; yay -Syu --combinedupgrade=false; else if type -q paru; paru -Syu; else; sudo pacman -Syu; end"',
+    )
     new = '        command: ["foot", "nixos-update"]'
-    if old not in text:
+    matches = [source for source in (old, old_with_fallbacks) if source in text]
+    if len(matches) != 1:
         raise SystemExit("UpdatesCount Arch update command not found")
-    path.write_text(text.replace(old, new, 1))
+    path.write_text(text.replace(matches[0], new, 1))
 
 
 def patch_managed_quickshell_lifecycle(root: Path) -> None:
