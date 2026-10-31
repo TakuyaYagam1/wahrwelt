@@ -112,7 +112,7 @@
        m_pendingWallpaperLease = m_textureCache->acquire(
 -          SharedTextureRequest{.path = m_wallpaperPath, .coverage = m_wallpaperCoverage}, &renderContext()->backend(),
 +          SharedTextureRequest{.path = texturePath, .coverage = m_wallpaperCoverage}, &renderContext()->backend(),
-           [this]() {
+           [this] {
              m_wallpaperDirty = true;
              requestLayout();
            }
