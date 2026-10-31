@@ -65,10 +65,7 @@ let
   };
 
   addV5Checks = old: {
-    patches = (old.patches or [ ]) ++ [
-      (patchRoot + /v5.patch)
-      (patchRoot + /v5-lockscreen-video.patch)
-    ];
+    patches = (old.patches or [ ]) ++ [ (patchRoot + /v5.patch) ];
     patchFlags = (old.patchFlags or [ "-p1" ]) ++ [ "--fuzz=0" ];
     nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.ffmpeg ];
     mesonFlags = builtins.filter (flag: flag != "-Dtests=disabled") (old.mesonFlags or [ ]) ++ [
@@ -93,6 +90,8 @@ let
     '';
     prePatch = (old.prePatch or "") + ''
       set -e
+      sed -i -E '/m_pendingWallpaperLease = m_textureCache->acquire/,/^[[:space:]]*\)/ s/^([[:space:]]*)\[this\] \{$/\1[this]() {/' \
+        src/shell/lockscreen/lock_surface.cpp
       check_marker() {
         file="$1"
         needle="$2"
