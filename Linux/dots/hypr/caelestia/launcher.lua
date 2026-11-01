@@ -1,11 +1,5 @@
 local wahrwelt = require("lib.wahrwelt")
 
-wahrwelt.bind_dispatch("SUPER + SUPER_L", "global caelestia:launcher")
-wahrwelt.bind_dispatch("SUPER + mouse:272", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse:273", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse:274", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse:275", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse:276", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse:277", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse_up", "global caelestia:launcherInterrupt", { non_consuming = true })
-wahrwelt.bind_dispatch("SUPER + mouse_down", "global caelestia:launcherInterrupt", { non_consuming = true })
+-- Hyprland cancels a release bind when Super is used in another chord.
+-- Use IPC to avoid an unconditional global-shortcut release callback.
+wahrwelt.bind_exec("SUPER + SUPER_L", "caelestia shell drawers toggle launcher", { release = true })

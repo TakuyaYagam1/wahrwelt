@@ -85,9 +85,7 @@ func TestShellKeybindProfilesUseExpectedLaunchers(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`wahrwelt.bind_dispatch("SUPER + SUPER_L", "global caelestia:launcher")`,
-		`wahrwelt.bind_dispatch("SUPER + mouse:272", "global caelestia:launcherInterrupt", { non_consuming = true })`,
-		`wahrwelt.bind_dispatch("SUPER + mouse_down", "global caelestia:launcherInterrupt", { non_consuming = true })`,
+		`wahrwelt.bind_exec("SUPER + SUPER_L", "caelestia shell drawers toggle launcher", { release = true })`,
 	} {
 		if !strings.Contains(string(caelestiaLauncher), want) {
 			t.Fatalf("caelestia launcher profile missing %q\n%s", want, string(caelestiaLauncher))
@@ -106,9 +104,8 @@ func TestShellKeybindProfilesUseExpectedLaunchers(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"noctalia-launcher.sh press",
-		"noctalia-launcher.sh interrupt",
-		"noctalia-launcher.sh release",
+		"noctalia-msg.sh launcher-toggle",
+		"{ release = true }",
 	} {
 		if !strings.Contains(string(noctaliaLauncher), want) {
 			t.Fatalf("noctalia launcher profile missing %q\n%s", want, string(noctaliaLauncher))

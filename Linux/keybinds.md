@@ -206,18 +206,13 @@ Wired through caelestia's `global, caelestia:*` dispatchers and CLI helpers.
 > Modules: `Linux/dots/hypr/caelestia/keybinds.lua`,
 > `Linux/dots/hypr/caelestia/launcher.lua`.
 
-### Launcher (Super long-press)
+### Launcher (Super release)
 
-Caelestia opens its launcher when you **press and hold `Super`** alone.
-A short tap is interpreted as a modifier (cancelled by any other key).
+Release `Super` alone to toggle the launcher. Using Super with another key
+or mouse action cancels the release binding in Hyprland.
 
-| Trigger | Action |
-| --- | --- |
-| `Super` (immediate) | Open launcher (`caelestia:launcher`) |
-| `Super` + any other key / mouse | Cancel launcher (`caelestia:launcherInterrupt`) |
-
-Interrupt is wired for: catchall keys, all mouse buttons
-(`mouse:272`–`mouse:277`), and scroll up/down.
+The binding calls `caelestia shell drawers toggle launcher` directly, avoiding
+an unconditional global-shortcut release callback after another shortcut.
 
 ### Shell panels
 
@@ -282,22 +277,16 @@ Wired through `noctalia msg <command>`.
 
 > Modules: `Linux/dots/hypr/noctalia/keybinds.lua`,
 > `Linux/dots/hypr/noctalia/launcher.lua`,
-> `Linux/dots/hypr/scripts/noctalia-launcher.sh`.
+> `Linux/dots/hypr/scripts/noctalia-msg.sh`.
 
-### Launcher (Super long-press)
+### Launcher (Super release)
 
-Noctalia opens its launcher through a press/release dance on **Super alone**,
-wired via `noctalia-launcher.sh`. The script tracks press, release, and any
-interrupting input.
+Release `Super` alone to toggle the launcher. Hyprland cancels the binding
+when Super is used with another key or mouse action.
 
-| Trigger | Action |
-| --- | --- |
-| `Super` press | `noctalia-launcher.sh press` (arms launcher) |
-| `Super` release | `noctalia-launcher.sh release` (opens launcher if no interrupt) |
-| `Super` + any other key / mouse | `noctalia-launcher.sh interrupt` (cancels) |
-
-Interrupt is wired for: catchall keys, all mouse buttons
-(`mouse:272`–`mouse:277`), and scroll up/down.
+The binding calls `noctalia-msg.sh launcher-toggle` once, without separate
+press/release processes or shared launcher state. The wrapper supports both
+Noctalia v4 and v5 IPC commands.
 
 ### Shell panels
 
