@@ -91,7 +91,7 @@ function M.dispatcher(command)
 	elseif name == "moveoutofgroup" then
 		return hl.dsp.window.move({ out_of_group = true })
 	elseif name == "lockactivegroup" then
-		return hl.dsp.group.lock_active({ action = rest ~= "" and rest or "toggle" })
+		return hl.dsp.group.lock({ action = rest ~= "" and rest or "toggle" })
 	elseif name == "centerwindow" then
 		return hl.dsp.window.center()
 	elseif name == "resizeactive" then
