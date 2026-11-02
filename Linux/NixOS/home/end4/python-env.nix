@@ -5,7 +5,12 @@ pkgs.python3.withPackages (ps: [
   ps.cffi
   ps.click
   ps."dbus-python"
-  pkgs.kde-material-you-colors
+  (
+    if ps ? "kde-material-you-colors" then
+      ps."kde-material-you-colors"
+    else
+      pkgs.kde-material-you-colors
+  )
   ps.libsass
   ps.loguru
   ps."material-color-utilities"
