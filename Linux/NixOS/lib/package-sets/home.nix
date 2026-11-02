@@ -28,7 +28,7 @@
   ];
   personal = with pkgs; [
     happ
-    onlyoffice-desktopeditors
+    pkgs-stable.onlyoffice-desktopeditors
     anytype
     insomnia
     dbeaver-bin
@@ -52,7 +52,7 @@
     jython
   ];
   games = with pkgs; [
-    lutris
+    pkgs-stable.lutris
     heroic
   ];
   media = with pkgs; [
