@@ -26,6 +26,7 @@ in
 
   config = lib.mkIf config.wahrwelt.features.ctfTools {
     environment.systemPackages = lib.flatten (lib.attrValues packageSets.ctf);
+    environment.etc."wordlists/seclists".source = "${pkgs-stable.seclists}/share/wordlists/seclists";
     programs.wireshark.enable = true;
   };
 }
