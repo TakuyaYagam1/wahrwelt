@@ -802,27 +802,25 @@ def patch_lock_setting(root: Path, variant: str) -> None:
     else:
         path = root / "ii/modules/settings/InterfaceConfig.qml"
     text = path.read_text()
-    button_pattern = re.compile(r'(?m)^(?P<indent>[ \t]*)buttonIcon: "water_drop"\s*$')
-    button_matches = list(button_pattern.finditer(text))
-    if len(button_matches) != 1:
+    checked_pattern = re.compile(
+        r"(?m)^[ \t]*checked: Config\.options\.lock\.useHyprlock[ \t]*$"
+    )
+    checked_matches = list(checked_pattern.finditer(text))
+    if len(checked_matches) != 1:
         fail(
-            f"native QuickShell lock setting in {path}: expected one lock switch, found {len(button_matches)}"
+            f"native QuickShell lock setting in {path}: expected one lock switch, found {len(checked_matches)}"
         )
-    button_match = button_matches[0]
+    checked_match = checked_matches[0]
     switch_pattern = re.compile(r"(?m)^(?P<indent>[ \t]*)ConfigSwitch \{")
     switch_matches = [
         match
         for match in switch_pattern.finditer(text)
-        if match.start() < button_match.start()
+        if match.start() < checked_match.start()
     ]
     if not switch_matches:
         fail(f"native QuickShell lock setting in {path}: ConfigSwitch anchor missing")
     match = switch_matches[-1]
     indent = match.group("indent")
-    if button_match.group("indent") != f"{indent}    ":
-        fail(
-            f"native QuickShell lock setting in {path}: lock switch indentation drifted"
-        )
     brace = text.find("{", match.start(), match.end())
     depth = 0
     end = -1
@@ -838,6 +836,20 @@ def patch_lock_setting(root: Path, variant: str) -> None:
                 break
     if end < 0:
         fail(f"native QuickShell lock setting in {path}: switch closing brace missing")
+    if checked_match.start() >= end:
+        fail(f"native QuickShell lock setting in {path}: checked anchor outside switch")
+    button_pattern = re.compile(
+        r'(?m)^(?P<indent>[ \t]*)buttonIcon: "water_drop"[ \t]*$'
+    )
+    button_matches = list(button_pattern.finditer(text, match.start(), end))
+    if len(button_matches) != 1:
+        fail(
+            f"native QuickShell lock setting in {path}: expected one water_drop icon in lock switch, found {len(button_matches)}"
+        )
+    if button_matches[0].group("indent") != f"{indent}    ":
+        fail(
+            f"native QuickShell lock setting in {path}: lock switch indentation drifted"
+        )
     replacement = f"""{indent}ConfigSwitch {{
 {indent}    buttonIcon: "water_drop"
 {indent}    text: Translation.tr("Use QuickShell lock screen (fixed)")

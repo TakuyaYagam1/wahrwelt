@@ -128,6 +128,52 @@ class PcSettingsPreviewTest(unittest.TestCase):
                 self.assertEqual(patch_preview(source, "QuickConfig fixture"), expected)
 
 
+class LockSettingTest(unittest.TestCase):
+    def test_lock_switch_survives_old_and_new_water_drop_uses(self) -> None:
+        for variant, extra_water_drop in (
+            ("pc", False),
+            ("pc", True),
+            ("official", False),
+        ):
+            with (
+                self.subTest(variant=variant, extra_water_drop=extra_water_drop),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                relative = (
+                    "modules/ii/settings/pages/InterfaceConfig.qml"
+                    if variant == "pc"
+                    else "ii/modules/settings/InterfaceConfig.qml"
+                )
+                path = root / relative
+                path.parent.mkdir(parents=True)
+                glass = (
+                    'ConfigSwitch {\n    buttonIcon: "water_drop"\n'
+                    '    text: Translation.tr("Glassy UI")\n}\n'
+                    if extra_water_drop
+                    else ""
+                )
+                path.write_text(
+                    glass + 'ConfigSwitch {\n    buttonIcon: "water_drop"\n'
+                    '    text: Translation.tr("Use Hyprlock")\n'
+                    "    checked: Config.options.lock.useHyprlock\n"
+                    "    onCheckedChanged: { Config.options.lock.useHyprlock = checked }\n"
+                    "}\n"
+                )
+
+                LIVE_WALLPAPERS.patch_lock_setting(root, variant)
+
+                patched = path.read_text()
+                self.assertTrue(patched.startswith(glass))
+                self.assertEqual(
+                    patched.count(
+                        'text: Translation.tr("Use QuickShell lock screen (fixed)")'
+                    ),
+                    1,
+                )
+                self.assertNotIn("Config.options.lock.useHyprlock", patched)
+
+
 class PcSidebarBannerTest(unittest.TestCase):
     def test_banner_patch_accepts_upstream_indentation_changes(self) -> None:
         for indentation in (32, 36):

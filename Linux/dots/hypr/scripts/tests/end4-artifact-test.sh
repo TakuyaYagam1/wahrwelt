@@ -316,7 +316,7 @@ check_live_wallpaper_contract() {
     }
     in_block {
       block = block $0 ORS
-      if ($0 ~ /water_drop/) found = 1
+      if (index($0, "Use QuickShell lock screen (fixed)") > 0) found = 1
     }
     END {
       if (found) printf "%s", block
