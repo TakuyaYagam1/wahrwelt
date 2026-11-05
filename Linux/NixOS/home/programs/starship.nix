@@ -8,6 +8,7 @@
       format = "[╭╴](fg:arrow)$username$os$git_branch(at $directory)$fill $cmd_duration $time ( via $python$conda$nodejs$c$rust$java)\n[╰─](fg:arrow)$character";
 
       add_newline = true;
+      scan_timeout = 100;
       palette = lib.mkForce "normal";
 
       palettes.normal = {
