@@ -24,6 +24,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
 
+      - name: Test OmniRouter updater
+        run: python3 .github/scripts/test-update-omnirouter.py
+
       - name: Install Nix
         uses: cachix/install-nix-action@v31.11.3
         with:
@@ -102,7 +105,7 @@ jobs:
         run: |
           sed -i 's/version = "[^"]*"/version = "${{ steps.release.outputs.version }}"/' "$OMNIROUTER_NIX"
           sed -i 's/rev = "v[^"]*"/rev = "v${{ steps.release.outputs.version }}"/' "$OMNIROUTER_NIX"
-          sed -i 's|hash = "sha256-[^"]*"|hash = "${{ steps.src.outputs.hash }}"|' "$OMNIROUTER_NIX"
+          sed -i '/^  src = fetchFromGitHub {/,/^  };/s|^    hash = "sha256-[^"]*"|    hash = "${{ steps.src.outputs.hash }}"|' "$OMNIROUTER_NIX"
           sed -i 's|npmDepsHash = "sha256-[^"]*"|npmDepsHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="|' "$OMNIROUTER_NIX"
 
       - name: Compute npmDepsHash
@@ -113,7 +116,14 @@ jobs:
           output="$(nix build --no-link --no-write-lock-file "$FLAKE#omnirouter" 2>&1)"
           set -e
 
-          got="$(printf '%s\n' "$output" | sed -nE 's/.*got:[[:space:]]*(sha256-[A-Za-z0-9+\\/=]+).*/\1/p' | tail -1)"
+          got="$(printf '%s\n' "$output" | awk '
+            /hash mismatch in fixed-output derivation.*-omnirouter-[^ ]+-npm-deps[.]drv/ { in_npm_deps = 1; next }
+            in_npm_deps && /got:[[:space:]]*sha256-/ {
+              match($0, /sha256-[A-Za-z0-9+\/=]+/)
+              print substr($0, RSTART, RLENGTH)
+              exit
+            }
+          ')"
 
           if [ -z "$got" ]; then
             printf '%s\n' "$output"
