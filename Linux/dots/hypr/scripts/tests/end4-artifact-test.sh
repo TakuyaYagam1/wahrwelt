@@ -32,7 +32,7 @@ has_search_toggle_contract() {
     return 0
   fi
 
-  grep -Fq 'local qsIpcCall = "qs -c $qsConfig ipc call"' "$keybinds" &&
+  grep -Fq "local qsIpcCall = \"qs -c \$qsConfig ipc call\"" "$keybinds" &&
     grep -Fq 'local searchToggle = hl.dsp.exec_cmd(qsIpcCall .. " search toggle' "$keybinds" &&
     grep -F -A1 'hl.bind("SUPER + SUPER_L", searchToggle,' "$keybinds" |
     grep -Fq '{ release = true, description = "Shell: Toggle search" })' &&
