@@ -37,12 +37,17 @@ assert_failed_build_stops_before_verification() {
 make_fixture() {
   local name="$1"
   local payload="$2"
+  local search_binding='hl.dsp.global("quickshell:searchToggleRelease")'
   local fixture="$test_root/$name"
+
+  if [ "$#" -ge 3 ]; then
+    search_binding="$3"
+  fi
 
   mkdir -p "$fixture/hyprland" "$fixture/wahrwelt"
   printf '%s\n' '-- fixture' >"$fixture/hyprland.lua"
   printf '%s\n' \
-    'hl.dsp.global("quickshell:searchToggleRelease")' \
+    "$search_binding" \
     'hl.dsp.global("quickshell:panelFamilyCycle")' \
     'hl.dsp.global("quickshell:sidebarRightToggle")' \
     'hl.bind("SUPER + L", hl.dsp.exec_cmd("/home/user/.config/hypr/scripts/lock-active.sh"))' \
@@ -50,6 +55,24 @@ make_fixture() {
   printf '%s\n' 'run /scripts/close-active.sh' >"$fixture/wahrwelt/keybinds.lua"
   printf '%s\n' 'lock_cmd = /hypr/scripts/lock-active.sh' >"$fixture/hypridle.conf"
   printf '%s' "$fixture"
+}
+
+assert_search_contract() {
+  local name="$1"
+  local expectation="$2"
+  local search_binding="$3"
+  local fixture output
+
+  fixture="$(make_fixture "$name" '' "$search_binding")"
+  if output="$(bash "$verifier" "$fixture" 2>&1)"; then
+    [ "$expectation" = accept ] || fail "$name missing search contract unexpectedly passed"
+  else
+    [ "$expectation" = reject ] || fail "$name search contract was rejected: $output"
+    case "$output" in
+      *"missing the search toggle IPC contract"*) ;;
+      *) fail "$name failed for the wrong reason: $output" ;;
+    esac
+  fi
 }
 
 assert_rejected() {
@@ -269,6 +292,17 @@ EOF
     esac
   fi
 }
+
+assert_search_contract legacy-search accept 'hl.dsp.global("quickshell:searchToggleRelease")'
+# shellcheck disable=SC2016
+search_ipc_binding='local qsIpcCall = "qs -c $qsConfig ipc call"
+local searchToggle = hl.dsp.exec_cmd(qsIpcCall .. " search toggle || pkill fuzzel || fuzzel")
+hl.bind("SUPER + SUPER_L", searchToggle,
+    { release = true, description = "Shell: Toggle search" })
+hl.bind("SUPER + SUPER_R", searchToggle, { release = true })'
+assert_search_contract search-ipc accept "$search_ipc_binding"
+assert_search_contract missing-search reject ''
+assert_search_contract search-ipc-without-release reject "${search_ipc_binding/\{ release = true, description/\{ description}"
 
 # shellcheck disable=SC2016
 assert_rejected current-restart \

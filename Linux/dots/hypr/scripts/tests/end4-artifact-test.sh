@@ -25,6 +25,20 @@ elif [ ! -f "$artifact/shell.qml" ] && [ ! -f "$artifact/ii/shell.qml" ]; then
   exit 1
 fi
 
+has_search_toggle_contract() {
+  local keybinds="$1"
+
+  if grep -Fq 'hl.dsp.global("quickshell:searchToggleRelease")' "$keybinds"; then
+    return 0
+  fi
+
+  grep -Fq 'local qsIpcCall = "qs -c $qsConfig ipc call"' "$keybinds" &&
+    grep -Fq 'local searchToggle = hl.dsp.exec_cmd(qsIpcCall .. " search toggle' "$keybinds" &&
+    grep -F -A1 'hl.bind("SUPER + SUPER_L", searchToggle,' "$keybinds" |
+    grep -Fq '{ release = true, description = "Shell: Toggle search" })' &&
+    grep -Fq 'hl.bind("SUPER + SUPER_R", searchToggle, { release = true })' "$keybinds"
+}
+
 switchwall_has_supported_video_commands() {
   local switchwall="$1"
   local normalized_source
@@ -899,8 +913,12 @@ if [ "$mode" = "hypr" ]; then
     exit 1
   fi
 
+  if ! has_search_toggle_contract "$artifact/hyprland/keybinds.lua"; then
+    printf 'FAIL: realized End4 artifact is missing the search toggle IPC contract\n' >&2
+    exit 1
+  fi
+
   for contract in \
-    'quickshell:searchToggleRelease' \
     'quickshell:panelFamilyCycle' \
     'quickshell:sidebarRightToggle'; do
     if ! grep -Fq "$contract" "$artifact/hyprland/keybinds.lua"; then
