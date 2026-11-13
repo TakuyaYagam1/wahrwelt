@@ -128,11 +128,12 @@ Existing user files are preserved during updates. Missing Fish/Neovim user
 templates are recreated. A new repository alias arrives through the base
 Fish configuration; a personal alias with the same name still takes priority.
 
-Files linked into `/nix/store` are generated defaults. Replacing such a link
-with an edited file is detected before Home Manager overwrites it. For copied
-Neovim defaults, known base versions allow a three-way merge; conflicting edits
-stop that batch. Older differing files with no known base remain unchanged and
-are reported as unmanaged.
+Files linked into `/nix/store` are generated defaults. A stale store link is
+relinked only when its contents match the current default; changed files and
+links outside the store are refused before Home Manager can overwrite them.
+For copied Neovim defaults, known base versions allow a three-way merge;
+conflicting edits stop that batch. Older differing files with no known base
+remain unchanged and are reported as unmanaged.
 
 ### Customizing Hyprland without forking the repo
 
