@@ -89,7 +89,9 @@ def check_file(home_fd, root_parts, name, entry, previous_root):
                 return
             # An older Home Manager generation can leave an immutable store
             # link behind even when it is no longer the current generation.
-            if live.startswith("/nix/store/") and read_regular(live) == read_regular(source):
+            if live.startswith("/nix/store/") and read_regular(live) == read_regular(
+                source
+            ):
                 return
             reason = "unexpected symlink"
         elif stat.S_ISREG(info.st_mode):

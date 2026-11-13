@@ -79,6 +79,11 @@ The scheduled flake updater also enforces the pC dependency boundary: the
 `xdg.configFile."quickshell/end4-pC".source` and the managed QuickShell
 transition artifact must build before an update PR can merge.
 
+The Noctalia release updater builds the patched v5 package with `--fuzz=0`
+and runs the wallpaper and lockscreen tests. When an upstream release changes
+patch context, verify `home/noctalia/patches/v5.patch` against both the pinned
+release and the candidate before publishing the update.
+
 ## Configuration Structure
 
 ```text

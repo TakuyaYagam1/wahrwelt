@@ -9,26 +9,18 @@
    'src/shell/wallpaper/wallpaper_shuffle_state.cpp',
    'src/shell/wallpaper/wallpaper.cpp',
    'src/shell/wallpaper/panel/wallpaper_panel.cpp',
-@@ -1302,6 +1304,9 @@
-     'virtual_grid_view_gesture',
-     'wallpaper_scan_symlink',
-     'wallpaper_shuffle_state',
+@@ -1303,2 +1303,5 @@
 +    'wallpaper_media',
 +    'live_wallpaper_controller',
 +    'wallpaper_integration',
-     'wayland_output_scale',
-     'wayland_toplevels_identity',
-     'webp_decoder',
+     'wallpaper_scan_symlink',
+     'wallpaper_shuffle_state',
 --- a/src/shell/wallpaper/panel/wallpaper_panel.cpp
 +++ b/src/shell/wallpaper/panel/wallpaper_panel.cpp
-@@ -13,6 +13,7 @@
- #include "shell/panel/panel_manager.h"
- #include "shell/tooltip/tooltip_manager.h"
+@@ -15,2 +15,3 @@
  #include "shell/wallpaper/panel/wallpaper_tile.h"
 +#include "shell/wallpaper/wallpaper_media.h"
  #include "shell/wallpaper/wallpaper_paths.h"
- #include "theme/builtin_palettes.h"
- #include "theme/community_palettes.h"
 @@ -418,6 +419,28 @@
    );
 
@@ -109,32 +101,20 @@
    WallpaperPanel(
        WaylandConnection* wayland, ConfigService* config, ThumbnailService* thumbnails, WallpaperScanner* scanner,
        noctalia::theme::ThemeService* themeService = nullptr
-@@ -132,3 +138,4 @@
-   Button* m_backButton = nullptr;
+@@ -131,2 +137,3 @@
+   Label* m_title = nullptr;
 +  Segmented* m_mediaFilter = nullptr;
-   Segmented* m_favoriteThemeSegmented = nullptr;
-   Segmented* m_favoritePaletteSourceSegmented = nullptr;
-@@ -167,6 +174,7 @@
-   bool m_showNames = true;
-   bool m_scanPending = false;
+   Button* m_backButton = nullptr;
+@@ -169,2 +176,3 @@
    SortMode m_sortMode = SortMode::NameAsc;
 +  MediaFilter m_mediaFilterMode = MediaFilter::All;
    std::uint64_t m_randomSeed = 0;
-   std::size_t m_pinnedFavoriteCount = 0;
-   bool m_syncingFavoriteControls = false;
 --- a/src/shell/wallpaper/panel/wallpaper_scanner.cpp
 +++ b/src/shell/wallpaper/panel/wallpaper_scanner.cpp
-@@ -1,9 +1,9 @@
- #include "shell/wallpaper/panel/wallpaper_scanner.h"
-
--#include "core/files/directory_scanner.h"
- #include "core/log.h"
- #include "util/file_utils.h"
- #include "util/string_utils.h"
-+#include <exception>
-
- #include <algorithm>
+@@ -9,2 +9,3 @@
  #include <cerrno>
++#include <exception>
+ #include <string>
 @@ -14,6 +14,18 @@
  namespace {
 
@@ -187,12 +167,9 @@
      }
 --- a/src/shell/wallpaper/panel/wallpaper_scanner.h
 +++ b/src/shell/wallpaper/panel/wallpaper_scanner.h
-@@ -1,6 +1,7 @@
- #pragma once
-
- #include "app/poll_source.h"
+@@ -5,2 +5,4 @@
 +#include "shell/wallpaper/wallpaper_media.h"
-
++
  #include <atomic>
  #include <condition_variable>
 @@ -22,6 +23,9 @@
@@ -228,14 +205,10 @@
    if (sameEntry) {
 --- a/src/shell/wallpaper/wallpaper.cpp
 +++ b/src/shell/wallpaper/wallpaper.cpp
-@@ -15,6 +15,7 @@
- #include "render/render_context.h"
- #include "shell/wallpaper/wallpaper_geometry.h"
+@@ -17,2 +17,3 @@
  #include "shell/wallpaper/wallpaper_instance.h"
 +#include "shell/wallpaper/wallpaper_media.h"
  #include "shell/wallpaper/wallpaper_paths.h"
- #include "shell/wallpaper/wallpaper_shuffle_state.h"
- #include "theme/theme_service.h"
 @@ -306,6 +307,7 @@
  } // namespace
 
@@ -265,19 +238,15 @@
      // Wallpaper disabled, full teardown
      for (auto& inst : m_instances) {
        releaseInstanceTextures(*inst);
-@@ -502,6 +511,12 @@
+@@ -502,2 +511,8 @@
  std::vector<WallpaperChange> Wallpaper::onStateChange() {
-   kLog.info("state file changed, checking for updates");
-
 +  // State reloads can change a static path to live (or back). Reconcile the
 +  // native surfaces and owned mpvpaper children before inspecting instances.
 +  if (m_config != nullptr && m_config->config().wallpaper.enabled) {
 +    syncInstances();
 +  }
 +
-   std::vector<WallpaperChange> changes;
-   for (auto& inst : m_instances) {
-     auto newPath = m_config->getWallpaperPath(inst->connectorName);
+   kLog.info("state file changed, checking for updates");
 @@ -593,3 +608,6 @@
    m_lastAutomationSecondStamp = secondStamp;
 +  if (m_liveController != nullptr && m_liveController->onSecondTick()) {
@@ -373,8 +342,7 @@
    instance->outputName = output.name;
 --- a/src/shell/wallpaper/wallpaper.h
 +++ b/src/shell/wallpaper/wallpaper.h
-@@ -5,3 +5,4 @@
- #include "render/core/wallpaper_types.h"
+@@ -6,2 +6,3 @@
 +#include "shell/wallpaper/live_wallpaper_controller.h"
  #include "shell/wallpaper/wallpaper_shuffle_state.h"
  #include "ui/signal.h"
@@ -395,14 +363,10 @@
  };
 --- a/src/theme/theme_service.cpp
 +++ b/src/theme/theme_service.cpp
-@@ -12,6 +12,7 @@
- #include "theme/custom_palettes.h"
- #include "theme/fixed_palette.h"
+@@ -16,2 +16,3 @@
  #include "theme/image_loader.h"
 +#include "shell/wallpaper/wallpaper_media.h"
  #include "theme/palette_generator.h"
- #include "theme/palette_transform.h"
- #include "theme/scheme.h"
 @@ -52,7 +53,9 @@
      // Pure and thread-safe: runs on the wallpaper palette worker as well as the main thread.
      std::optional<GeneratedPalette> decodeWallpaperPalette(const std::string& path, Scheme scheme) {
@@ -489,10 +453,14 @@
 +} // namespace noctalia::wallpaper
 --- /dev/null
 +++ b/src/shell/wallpaper/live_wallpaper_controller.cpp
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,211 @@
 +#include "shell/wallpaper/live_wallpaper_controller.h"
 +
++#if __has_include("system/process.h")
++#include "system/process.h"
++#else
 +#include "core/process/process.h"
++#endif
 +
 +#include <cerrno>
 +#include <csignal>
@@ -726,10 +694,14 @@
 +} // namespace noctalia::wallpaper
 --- /dev/null
 +++ b/src/shell/wallpaper/wallpaper_media.cpp
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,157 @@
 +#include "shell/wallpaper/wallpaper_media.h"
 +
++#if __has_include("system/process.h")
++#include "system/process.h"
++#else
 +#include "core/process/process.h"
++#endif
 +
 +#include <webp/demux.h>
 +#include <webp/decode.h>
@@ -1164,24 +1136,16 @@
    'src/shell/wallpaper/wallpaper_shuffle_state.cpp',
    'src/shell/wallpaper/wallpaper.cpp',
    'src/shell/wallpaper/panel/wallpaper_panel.cpp',
-@@ -1304,6 +1305,7 @@
-     'virtual_grid_view_gesture',
-     'wallpaper_scan_symlink',
-     'wallpaper_shuffle_state',
-+    'lockscreen_video_player',
-     'wallpaper_media',
-     'live_wallpaper_controller',
+@@ -1306,2 +1306,3 @@
      'wallpaper_integration',
++    'lockscreen_video_player',
+     'wallpaper_scan_symlink',
 --- a/src/shell/lockscreen/lock_surface.cpp
 +++ b/src/shell/lockscreen/lock_surface.cpp
-@@ -15,6 +15,7 @@
+@@ -15,2 +15,3 @@
++#include "shell/wallpaper/wallpaper_media.h"
  #include "shell/lockscreen/lockscreen_login_box.h"
  #include "shell/lockscreen/lockscreen_session_actions.h"
- #include "shell/lockscreen/lockscreen_widgets_host.h"
-+#include "shell/wallpaper/wallpaper_media.h"
- #include "shell/session/session_action_meta.h"
- #include "shell/session/session_action_runner.h"
- #include "system/weather_service.h"
 @@ -34,6 +35,7 @@
  #include <chrono>
  #include <cmath>
@@ -1406,22 +1370,14 @@
  }
 --- a/src/shell/lockscreen/lock_surface.h
 +++ b/src/shell/lockscreen/lock_surface.h
-@@ -2,6 +2,7 @@
-
- #include "capture/screencopy_capture.h"
+@@ -4,2 +4,3 @@
  #include "config/config_service.h"
 +#include "core/timer_manager.h"
  #include "render/animation/animation_manager.h"
- #include "render/core/blur_cache.h"
- #include "render/core/color.h"
-@@ -11,6 +12,7 @@
- #include "render/scene/input_dispatcher.h"
+@@ -12,2 +13,3 @@
  #include "render/scene/node.h"
- #include "shell/lockscreen/lockscreen_login_box.h"
 +#include "shell/lockscreen/lockscreen_video_player.h"
- #include "wayland/surface.h"
-
- #include <array>
+ #include "shell/lockscreen/lockscreen_login_box.h"
 @@ -140,6 +142,10 @@
    void invalidateSleepFrame();
    static void handleSleepFrameDone(void* data, wl_callback* callback, std::uint32_t callbackData);
@@ -1452,10 +1408,14 @@
    std::function<void()> m_onCycleLayout;
 --- /dev/null
 +++ b/src/shell/lockscreen/lockscreen_video_player.cpp
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,148 @@
 +#include "shell/lockscreen/lockscreen_video_player.h"
 +
++#if __has_include("system/process.h")
++#include "system/process.h"
++#else
 +#include "core/process/process.h"
++#endif
 +
 +#include <atomic>
 +#include <mutex>
@@ -1650,8 +1610,12 @@
 +} // namespace noctalia::lockscreen
 --- /dev/null
 +++ b/tests/lockscreen_video_player_test.cpp
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,103 @@
++#if __has_include("system/process.h")
++#include "system/process.h"
++#else
 +#include "core/process/process.h"
++#endif
 +#include "shell/lockscreen/lockscreen_video_player.h"
 +
 +#include <array>
