@@ -86,6 +86,10 @@ minimal -> desktop -> developer -> personal
 | `developer` | Same desktop | Development/API tools, rootless Docker, Compose, Buildx, lazydocker and Claude/Codex tools. |
 | `personal` | Same desktop | Extra workstation apps, IDEs, AI tools and games. The largest build. |
 
+`glances` is temporarily absent from the base package set: its nixpkgs
+dependency `python-jose` 3.5.0 is marked insecure (CVE-2026-120459).
+`htop` remains available in every preset.
+
 For the desktop shown above, start with `desktop`. Choose `developer` if you
 also want the development stack. The current default is `personal`, so check
 the preset in the TUI instead of accepting it by habit.

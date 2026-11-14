@@ -1,6 +1,10 @@
 #include "config/config_service.h"
 #include "core/deferred_call.h"
+#if __has_include("system/process.h")
+#include "system/process.h"
+#else
 #include "core/process/process.h"
+#endif
 #include "net/http_client.h"
 #include "shell/wallpaper/panel/wallpaper_scanner.h"
 #include "tests/test_check.h"
