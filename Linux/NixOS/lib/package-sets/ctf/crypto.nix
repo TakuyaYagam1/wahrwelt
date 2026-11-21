@@ -35,7 +35,7 @@ with pkgs-stable;
   hashcat-utils
   hashid
   hashrat
-  hydra
+  thc-hydra
   john
   johnny
   maskprocessor
