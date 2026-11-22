@@ -84,4 +84,5 @@ make -C Linux nix-shell-transition-build
 make -C Linux nix-end4-hypr-build
 make -C Linux nix-end4-pc-quickshell-build
 nix build --no-link --no-write-lock-file ./Linux/NixOS/presets/personal#noctalia
+nix eval --raw --no-write-lock-file "path:$PWD?dir=Linux/NixOS/presets/minimal#checks.x86_64-linux.preset-host.drvPath"
 ```

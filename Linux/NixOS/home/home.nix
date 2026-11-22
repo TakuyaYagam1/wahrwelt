@@ -4,6 +4,7 @@
   inputs,
   lib,
   modulesPath,
+  options,
   wahrwelt,
   wahrweltLib,
   ...
@@ -139,6 +140,10 @@ in
       rofi.enable = false;
       # Sine and user-installed mods own the browser theme.
       zen-browser.enable = false;
+    }
+    # Stylix can still configure Wayprompt after Home Manager removes it.
+    // lib.optionalAttrs (options ? stylix.targets.wayprompt.enable && !(options ? programs.wayprompt.enable)) {
+      wayprompt.enable = false;
     };
   };
 
