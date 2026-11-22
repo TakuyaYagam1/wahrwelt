@@ -71,11 +71,12 @@ let
     mesonFlags = builtins.filter (flag: flag != "-Dtests=disabled") (old.mesonFlags or [ ]) ++ [
       "-Dtests=enabled"
     ];
+    # Since 5.6, Meson installs the PAM helper as a separate executable.
     buildPhase = ''
       runHook preBuild
       ninja -j"$NIX_BUILD_CORES" noctalia lockscreen_video_player_test \
         wallpaper_media_test live_wallpaper_controller_test wallpaper_scan_symlink_test \
-        wallpaper_integration_test
+        wallpaper_integration_test${pkgs.lib.optionalString (pkgs.lib.versionAtLeast old.version "5.6.0") " noctalia-pam-helper"}
       runHook postBuild
     '';
     doCheck = true;
