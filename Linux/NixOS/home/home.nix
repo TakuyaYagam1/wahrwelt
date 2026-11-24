@@ -4,7 +4,6 @@
   inputs,
   lib,
   modulesPath,
-  options,
   wahrwelt,
   wahrweltLib,
   ...
@@ -91,13 +90,18 @@ let
   ];
 in
 {
-  disabledModules =
-    lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia.nix") [
-      "programs/noctalia.nix"
-    ]
-    ++ lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia") [
-      "programs/noctalia"
-    ];
+  disabledModules = [
+    # Noctalia owns its theme, and the minimal preset has no Noctalia module.
+    "${inputs.stylix}/modules/noctalia/hm.nix"
+    # Older Stylix still configures Wayprompt after Home Manager removed it.
+    "${inputs.stylix}/modules/wayprompt/hm.nix"
+  ]
+  ++ lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia.nix") [
+    "programs/noctalia.nix"
+  ]
+  ++ lib.optionals (builtins.pathExists "${modulesPath}/programs/noctalia") [
+    "programs/noctalia"
+  ];
 
   _module.args.homeLibs = homeLibs;
 
@@ -140,10 +144,6 @@ in
       rofi.enable = false;
       # Sine and user-installed mods own the browser theme.
       zen-browser.enable = false;
-    }
-    # Stylix can still configure Wayprompt after Home Manager removes it.
-    // lib.optionalAttrs (options ? stylix.targets.wayprompt.enable && !(options ? programs.wayprompt.enable)) {
-      wayprompt.enable = false;
     };
   };
 
