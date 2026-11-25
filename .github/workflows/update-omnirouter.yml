@@ -28,7 +28,7 @@ jobs:
         run: python3 .github/scripts/test-update-omnirouter.py
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v31.11.5
+        uses: cachix/install-nix-action@v32.0.0
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
