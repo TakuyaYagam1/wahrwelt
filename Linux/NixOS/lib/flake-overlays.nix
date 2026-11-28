@@ -61,15 +61,6 @@ rec {
   inherit flakePackagesOverlay;
   inherit (shellOverlays) valkeyNoCheckOverlay;
 
-  # Backport nixpkgs#92b03f1 until the channel includes the cronet cgo allowlist fix.
-  singBoxCronetLinkerFlagOverlay = _final: prev: {
-    sing-box = prev.sing-box.overrideAttrs (old: {
-      env = (old.env or { }) // {
-        CGO_LDFLAGS_ALLOW = "-l:libcronet\\.a";
-      };
-    });
-  };
-
   omnirouterFromWahrweltOverlay = _final: prev: {
     omnirouter =
       inputs.wahrwelt.packages.${system}.omnirouter or (prev.callPackage ../pkgs/omnirouter.nix { });

@@ -11,7 +11,6 @@ rec {
 
   overlaysModule = _: {
     nixpkgs.overlays = [
-      overlays.singBoxCronetLinkerFlagOverlay
       overlays.flakePackagesOverlay
       overlays.valkeyNoCheckOverlay
       overlays.omnirouterFromWahrweltOverlay
