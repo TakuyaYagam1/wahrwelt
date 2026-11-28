@@ -16,6 +16,13 @@ let
   nixosSource = layout.nixos;
   dotsSource = layout.dots;
   installerSource = layout.installer;
+  # Backport nixpkgs#92b03f1 until the channel includes the cronet cgo allowlist fix.
+  singBox = flakePkgs.sing-box.overrideAttrs (old: {
+    env = (old.env or { }) // {
+      CGO_LDFLAGS_ALLOW = "-l:libcronet\\.a";
+    };
+  });
+
   caelestiaPackages = import ../home/caelestia/patches/package.nix {
     inherit inputs system;
     prev = flakePkgs;
@@ -71,7 +78,7 @@ let
               hyprland
               libarchive
               unzip
-              sing-box
+              singBox
             ]
           )
         }
